@@ -21,6 +21,7 @@ import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
 import { messageOf } from './store.ts'
+import { ReasoningEffortEditor } from './ReasoningEffortEditor.tsx'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -417,6 +418,16 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                     onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
                   />
                 </label>
+                <ReasoningEffortEditor
+                  model={model}
+                  index={index}
+                  models={models}
+                  onChange={onChange}
+                  api={api}
+                  {...probe.provider === undefined ? {} : { provider: probe.provider }}
+                  t={t}
+                  disabled={disabled}
+                />
               </div>
             )
             : null}

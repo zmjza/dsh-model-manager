@@ -28,7 +28,7 @@ import {
   deletePath, getPath, hasPath, nodeAtPath, rehydrateSchema, setPath, validateDraft,
 } from '@deepseek-ai/dsh-client-schema-form'
 import {
-  DeepSeekModelsEditor, modelDrafts, validateDeepSeekModels,
+  DeepSeekModelsEditor, modelDrafts, THINKING_LEVELS, validateDeepSeekModels,
 } from './DeepSeekModelsEditor.tsx'
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
@@ -447,6 +447,31 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
                 </div>
               )
               : null}
+            {/* The route-level default thinking level — the level a request
+                falls back to when the UI names none. Per-model available levels
+                live on each model row's disclosure (reasoningEfforts); this is
+                the pi-ai profile's `reasoning` default. */}
+            {family === 'pi-ai' ? (
+              <div className={styles['field']}>
+                <span className={styles['fieldLabel']}>{t('defaultThinkingLevel')}</span>
+                <select
+                  className={`${styles['input']} ${styles['selectInput']}`}
+                  value={stringAt(draft, 'reasoning') ?? ''}
+                  aria-label={t('defaultThinkingLevel')}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (value === '') setField('reasoning', undefined)
+                    else setDraft(current => setPath(current, ['reasoning'], value))
+                  }}
+                >
+                  <option value="">{t('defaultThinkingLevelNone')}</option>
+                  {THINKING_LEVELS.slice(1).map(level => (
+                    <option key={level} value={level}>{level}</option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             {/* Both families edit the same rows through the same contract; only
                 the extras differ — DeepSeek's inherited capacities, pi-ai's
                 endpoint interrogation. */}

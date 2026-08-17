@@ -11,6 +11,7 @@ import {
   IconChevronDownOutline14, IconChevronRightOutline14, IconPlusOutline16, IconTrashOutline16,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { en } from './locales.ts'
+import { ReasoningEffortEditor } from './ReasoningEffortEditor.tsx'
 import styles from './ModelsSection.module.css'
 
 /** One catalog entry kept structurally open so hidden or future fields survive an edit. */
@@ -21,6 +22,46 @@ type CatalogField = 'id' | 'name' | 'contextWindow' | 'maxTokens'
 
 /** The two token counts edited as K/M-suffixed text behind a row's disclosure. */
 type CapacityField = 'contextWindow' | 'maxTokens'
+
+/**
+ * Every thinking level a pi-ai profile may declare, in escalation order — the
+ * reasoning-effort vocabulary a model's `reasoningEfforts` maps to wire
+ * spellings. Mirrors the adapter's THINKING_LEVELS constant.
+ */
+export const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
+
+export type ThinkingLevel = typeof THINKING_LEVELS[number]
+
+/** The selectable effort levels for one model, in escalation order. */
+export function modelEfforts(model: DeepSeekModelDraft): readonly ThinkingLevel[] {
+  const efforts = model['reasoningEfforts']
+  if (typeof efforts !== 'object' || efforts === null || Array.isArray(efforts)) return []
+  const map = efforts as Record<string, unknown>
+  return THINKING_LEVELS.filter(level => map[level] !== undefined && map[level] !== null)
+}
+
+/**
+ * Set a model's selectable reasoning levels. Each level is declared with its
+ * own id as the wire spelling (the OpenAI-compatible convention), and levels
+ * outside the selection are dropped — pi-ai maps dropped base levels to
+ * `null` (unsupported) and keeps the composer picker to exactly the selected
+ * set. A model with no selection drops `reasoningEfforts` entirely and falls
+ * back to the inherited capability (or none).
+ * @param model - the draft row to patch.
+ * @param levels - the selected non-off thinking levels, in escalation order.
+ * @returns a shallow copy carrying the new `reasoningEfforts` value.
+ */
+export function withModelEfforts(model: DeepSeekModelDraft, levels: readonly ThinkingLevel[]): DeepSeekModelDraft {
+  const copy = { ...model }
+  if (levels.length === 0) {
+    Reflect.deleteProperty(copy, 'reasoningEfforts')
+    return copy
+  }
+  const efforts: Record<string, string> = {}
+  for (const level of levels) efforts[level] = level
+  copy['reasoningEfforts'] = efforts
+  return copy
+}
 
 /** Row index encoded in an editing-buffer key. */
 function rowOf(key: string): number {
@@ -262,6 +303,18 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
     </label>
   )
 
+  /** The reasoning-effort selector for one row, inside its disclosure. */
+  const effortField = (model: DeepSeekModelDraft, index: number): ReactNode => (
+    <ReasoningEffortEditor
+      model={model}
+      index={index}
+      models={props.models}
+      onChange={props.onChange}
+      t={props.t}
+      disabled={props.disabled}
+    />
+  )
+
   return (
     <section className={styles['modelCatalog']} aria-label={props.t('models')}>
       <div className={styles['modelListHead']}>
@@ -343,6 +396,7 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                     <div className={styles['modelAdvanced']}>
                       {capacityField(model, index, 'contextWindow', props.defaultContextWindow)}
                       {capacityField(model, index, 'maxTokens', props.defaultMaxTokens)}
+                      {effortField(model, index)}
                     </div>
                   )
                   : null}
