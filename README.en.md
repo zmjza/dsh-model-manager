@@ -114,7 +114,7 @@ A capsule + popup **slider** in the composer tool row (Claude / Codex "Effort" s
 
 - **Look** — a horizontal track with a **purple pixelated-particle fill** running left→right up to the current level, and a **white rounded thumb** (still white / high-contrast in light mode).
 - **Endpoint copy (decision A)** — the card title is「**思考程度**」and the endpoints read「**低 ── 高**」(low left, high right).
-- **Theme adaptive** — all colors come from DSH theme tokens (`--dsw-alias-*` / `--dsw-specific-*`, no hard-coded hex), so the card follows the page theme automatically; theme purple in light mode, bright purple in dark mode.
+- **Theme adaptive** — the card surface/borders/text use the theme tokens this DSH build actually provides (`--dsw-alias-bg-base`, `--dsw-alias-border-l2/3`, `--dsw-alias-label-*`, verified on a live render), so the card follows the page theme automatically. The purple particles use a curated `--effort-purple` (light `#8b5cff` / dark `#a678ff`, switched via the `data-ds-dark-theme` attr) because this build exposes no purple accent token.
 - **Per-level animation (R4)** — each level drives a different animation morphology (via `data-tier`): `off` = no particles / `minimal` = sparse static specks / `low` = sparse twinkle / `medium` = medium density + drift / `high` = dense + breathing ring / `xhigh` = brighter + growing halo / `max` = full-track shine + comet streak.
 - **Crisp electronic sound (recommended)** — switching levels plays a **crisp electronic blip synthesized with Web Audio, pitch ascending with the level** (pentatonic; `off` lowest → `max` brightest, like a volume knob click), no external assets. `AudioContext` is created on the **first user gesture** (autoplay policy), a system mute can cut it, and restricted environments degrade to silent + a console hint.
 - **Placement (R5)** — the popup opens **above** the button by default (`bottom: calc(100% + 8px)`), flipping below only when space is tight.
@@ -155,7 +155,23 @@ Per the v5 requirement, every family was checked against the official vendor doc
 
 ## Screenshots
 
-> Real-machine screenshots (to be added after restarting the local `dsh web`): the 模型增强 settings page, same-family multi-gateway, the thinking-level slider (dark / light / max particles), and model visibility.
+> All real-machine captures (rendered by the local `dsh web`; the light/dark pair was taken by switching the app's own 外观 preference — the card follows the theme).
+
+**Composer thinking-level slider — open (light / dark)**
+
+| Light | Dark |
+|---|---|
+| ![slider light](docs/screens/01-effort-slider-light.png) | ![slider dark](docs/screens/02-effort-slider-dark-full.png) |
+
+**Slider card close-ups (light / dark)**
+
+| Light | Dark |
+|---|---|
+| ![close-up light](docs/screens/04-effort-slider-light-closeup.png) | ![close-up dark](docs/screens/03-effort-slider-dark-closeup.png) |
+
+**Settings → 模型增强 page**
+
+![Models Enhanced settings](docs/screens/05-models-enhanced-settings-light.png)
 
 ## Development
 
