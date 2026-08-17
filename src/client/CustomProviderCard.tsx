@@ -66,6 +66,13 @@ export interface CustomProviderCardProps {
   readOnly: boolean
   /** Close the card; `changed` reports whether a provider was created. */
   onClose: (changed: boolean) => void
+  /**
+   * Prefilled route id for a same-family multi-gateway instance (e.g.
+   * `openai-2`). The user may edit it; the card keeps the uniqueness gate.
+   */
+  initialRoute?: string
+  /** Optional hint naming the family this instance is cloned from. */
+  familyHint?: string
 }
 
 /**
@@ -78,7 +85,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   // Captured at mount, like the editor's: the write must be judged against the
   // section this card was drafted over, not whatever it grew into meanwhile.
   const [openedAt] = useState(() => props.revision)
-  const [route, setRoute] = useState('')
+  const [route, setRoute] = useState(props.initialRoute ?? '')
   const [displayName, setDisplayName] = useState('')
   const [baseURL, setBaseURL] = useState('')
   const [protocol, setProtocol] = useState(protocols[0] ?? '')
@@ -192,6 +199,9 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
       <div className={styles['editorHeader']}>
         <span className={styles['editorTitle']}>{t('customTitle')}</span>
       </div>
+      {props.familyHint === undefined
+        ? null
+        : <p className={styles['notice']}>{props.familyHint}</p>}
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('customRoute')}</span>
         <input

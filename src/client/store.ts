@@ -71,6 +71,38 @@ export function deriveKeyRef(provider: string): string {
 }
 
 /**
+ * The smallest existing route id not colliding with `taken`, per the
+ * `族名-2` / `族名-3` increment scheme (a family with no taken route keeps its
+ * own id). Used by the same-family multi-gateway flow so a provider family can
+ * be added more than once with distinct relay endpoints.
+ * @param family - the provider family route id (e.g. `openai`).
+ * @param taken - every route id already declared.
+ * @returns a route id the caller may create without collision.
+ */
+export function nextRouteId(family: string, taken: readonly string[]): string {
+  if (!taken.includes(family)) return family
+  const prefix = family.endsWith('-') ? family.slice(0, -1) : family
+  for (let i = 2; ; i++) {
+    const candidate = `${prefix}-${i}`
+    if (!taken.includes(candidate)) return candidate
+  }
+}
+
+/**
+ * Whether a route id belongs to a provider family: the family's own route or
+ * one of its same-family instances (`openai`, `openai-2`, `openai-3`, …).
+ * @param route - the route id to test.
+ * @param family - the family route id.
+ * @returns whether the route is the family or an incremental instance of it.
+ */
+export function isFamilyRoute(route: string, family: string): boolean {
+  if (route === family) return true
+  if (!route.startsWith(`${family}-`)) return false
+  const suffix = route.slice(family.length + 1)
+  return /^[0-9]+$/.test(suffix)
+}
+
+/**
  * The wire protocols a hand-declared route may name, read out of the owning
  * namespace's own schema. This stays a schema read rather than a wire field so
  * the choices the page offers cannot drift from the ones the adapter accepts:

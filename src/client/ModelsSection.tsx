@@ -18,7 +18,7 @@ import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-web-react'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
-import { deriveKeyRef, messageOf, protocolChoices, providerUsable } from './store.ts'
+import { deriveKeyRef, isFamilyRoute, messageOf, nextRouteId, protocolChoices, providerUsable } from './store.ts'
 import type { ModelsSettingsState, ModelsSettingsStore, ProviderRow } from './store.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
 import type { en } from './locales.ts'
@@ -179,6 +179,9 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
   const state = injected.useSnapshot(snapshot => snapshot)
   const [editing, setEditing] = useState<EditorTarget | undefined>(undefined)
   const [adding, setAdding] = useState(false)
+  // Same-family multi-gateway flow: the family route id being cloned into a
+  // new instance (its route id, not a configured route's address).
+  const [cloningFamily, setCloningFamily] = useState<string | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<EditorTarget | undefined>(undefined)
   const [deleting, setDeleting] = useState(false)
   const [deleteFailure, setDeleteFailure] = useState<string | undefined>(undefined)
@@ -196,6 +199,7 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
   const closeEditor = (changed: boolean, target: ProviderIdentity): void => {
     setEditing(undefined)
     setAdding(false)
+    setCloningFamily(undefined)
     setDeclaring(false)
     if (changed) announceSaved(target)
   }
@@ -263,13 +267,42 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
   // step: whether the user already has a provider to talk to.
   const anyUsable = state.rows.some(providerUsable)
   const configured = state.rows.filter(row => row.configured)
-  const addable = state.rows.filter(row => !row.configured && row.entry.settingsNs !== '')
-  const addTarget = adding ? editing : undefined
-  const addNamespace = addTarget === undefined ? undefined : state.namespaces.get(addTarget.settingsNs)
+  // Every configurable family (indexed by route id), configured or dormant, so
+  // a family can always be added again — the same-family multi-gateway flow.
+  // Catalogue routes without a settings address have nothing to write and stay
+  // off the picker, exactly as before.
+  const families = state.rows.filter(row => row.entry.settingsNs !== '')
+  const instanceCount = (family: string): number =>
+    state.rows.filter(row => isFamilyRoute(row.entry.provider, family)).length
+  /**
+   * The dormant (unconfigured) directory row for a family, when adopting it
+   * for the first time — the official flow: the route is the family id itself
+   * and the editor only asks for a key and optional extras.
+   */
+  const dormantOf = (family: string): ProviderRow | undefined =>
+    state.rows.find(row => row.entry.provider === family && !row.configured)
+  const familyConfigured = (family: string): boolean =>
+    state.rows.some(row => isFamilyRoute(row.entry.provider, family) && row.configured)
   // Hand-declared routes live in the pi-ai namespace, which is also the only
   // one whose schema names the protocols one may speak; without it mounted
   // there is nothing to declare and the entry point stays disabled.
   const protocols = protocolChoices(state.namespaces.get('llm-pi-ai'))
+  // The family being added: its dormant directory row when adopting it for the
+  // first time (route = family id, official editor), or undefined when it is
+  // already configured and a same-family clone is being created instead.
+  const addingFamily = cloningFamily
+  const dormant = addingFamily === undefined ? undefined : dormantOf(addingFamily)
+  const cloningRoute = addingFamily === undefined
+    ? undefined
+    : nextRouteId(addingFamily, state.rows.map(row => row.entry.provider))
+  // A first-time adopted family routes under its own id and edits via the
+  // official provider editor (key + extras, route fixed). An already-configured
+  // family is cloned under an incremental route with a distinct relay endpoint.
+  const cloningAsConfigured = addingFamily !== undefined && familyConfigured(addingFamily)
+  const cloning = addingFamily === undefined
+    ? undefined
+    : state.rows.find(row => row.entry.provider === addingFamily)
+  const addNamespace = dormant === undefined ? undefined : state.namespaces.get(dormant.entry.settingsNs)
 
   return (
     <div className={styles['section']}>
@@ -393,41 +426,67 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
         })}
       </ul>
       <div className={styles['addBlock']}>
-        {addTarget !== undefined && addNamespace !== undefined
-          ? (
-            <div className={styles['addCard']}>
-              <div className={styles['field']}>
-                <span className={styles['fieldLabel']}>{t('provider')}</span>
-                <select
-                  className={`${styles['input']} ${styles['selectInput']}`}
-                  value={addTarget.provider}
-                  aria-label={t('provider')}
-                  onChange={(event) => {
-                    const row = addable.find(candidate => candidate.entry.provider === event.target.value)
-                    /* v8 ignore next -- the select only lists addable rows */
-                    if (row === undefined) return
-                    setEditing(targetOf(row))
-                  }}
-                >
-                  {addable.map(row => (
-                    <option key={row.entry.provider} value={row.entry.provider}>{row.entry.displayName}</option>
-                  ))}
-                </select>
-              </div>
-              <ProviderEditor
-                key={addTarget.provider}
-                provider={addTarget.provider}
-                displayName={addTarget.displayName}
-                hideTitle
-                namespace={addNamespace}
-                settingsPath={addTarget.settingsPath}
-                api={api}
-                t={t}
-                readOnly={!state.writable}
-                onClose={(changed) => { closeEditor(changed, addTarget) }}
-              />
+        {adding && addingFamily !== undefined ? (
+          <div className={styles['addCard']}>
+            <div className={styles['field']}>
+              <span className={styles['fieldLabel']}>{t('provider')}</span>
+              <select
+                className={`${styles['input']} ${styles['selectInput']}`}
+                value={addingFamily}
+                aria-label={t('provider')}
+                onChange={(event) => { setCloningFamily(event.target.value) }}
+              >
+                {families.map(family => (
+                  <option key={family.entry.provider} value={family.entry.provider}>
+                    {family.entry.displayName} · {t('instances').replace('{count}', String(instanceCount(family.entry.provider)))}
+                  </option>
+                ))}
+              </select>
             </div>
-          )
+            {/* First-time adoption: official editor, route fixed to the family id. */}
+            {!cloningAsConfigured && dormant !== undefined && addNamespace !== undefined
+              ? (
+                <ProviderEditor
+                  key={addingFamily}
+                  provider={dormant.entry.provider}
+                  displayName={dormant.entry.displayName}
+                  hideTitle
+                  namespace={addNamespace}
+                  settingsPath={dormant.entry.settingsPath}
+                  api={api}
+                  t={t}
+                  readOnly={!state.writable}
+                  onClose={(changed) => {
+                    setCloningFamily(undefined)
+                    setAdding(false)
+                    if (changed) void controller.load()
+                  }}
+                />
+              )
+              /* Same-family clone: incremental route + distinct relay endpoint. */
+              : cloning !== undefined && cloningRoute !== undefined
+                ? (
+                  <CustomProviderCard
+                    key={addingFamily}
+                    taken={state.rows.map(row => row.entry.provider)}
+                    protocols={protocols}
+                    /* v8 ignore next -- the card only opens from a button disabled without this namespace */
+                    revision={state.namespaces.get('llm-pi-ai')?.revision ?? 0}
+                    api={api}
+                    t={t}
+                    readOnly={!state.writable}
+                    initialRoute={cloningRoute}
+                    familyHint={t('familyCloneHint').replace('{family}', cloning.entry.displayName)}
+                    onClose={(changed) => {
+                      setCloningFamily(undefined)
+                      setAdding(false)
+                      if (changed) void controller.load()
+                    }}
+                  />
+                )
+                : null}
+          </div>
+        )
           : declaring
             ? (
               <div className={styles['addCard']}>
@@ -447,23 +506,24 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
               </div>
             )
             : (
-              // One row for the two ways to gain a provider: adopt one the
-              // adapter already knows, or declare one it does not. Side by side
-              // and equal-width so they read as siblings and line up with the
-              // rows above, rather than two pills of different lengths.
+              // One row for the two ways to gain a provider: reuse a known
+              // family (same-family multi-gateway, selectable again once it is
+              // configured) or declare a route the adapter does not ship. Side
+              // by side and equal-width so they read as siblings and line up
+              // with the rows above, rather than two pills of different lengths.
               <div className={styles['addActions']}>
                 <button
                   type="button"
                   className={styles['addButton']}
-                  disabled={addable.length === 0 || !state.writable}
+                  disabled={families.length === 0 || !state.writable}
                   onClick={() => {
-                    const first = addable[0]
+                    const first = families[0]
                     /* v8 ignore next -- the button is disabled while nothing is addable */
                     if (first === undefined) return
                     setSavedTarget(undefined)
                     setDeclaring(false)
                     setAdding(true)
-                    setEditing(targetOf(first))
+                    setCloningFamily(first.entry.provider)
                   }}
                 >
                   {/* Same glyph as the composer's attach button. */}
@@ -477,7 +537,7 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
                   onClick={() => {
                     setSavedTarget(undefined)
                     setAdding(false)
-                    setEditing(undefined)
+                    setCloningFamily(undefined)
                     setDeclaring(true)
                   }}
                 >
