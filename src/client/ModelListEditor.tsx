@@ -21,6 +21,7 @@ import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { formatCapacity, parseCapacity } from './DeepSeekModelsEditor.tsx'
 import type { DeepSeekModelDraft } from './DeepSeekModelsEditor.tsx'
 import { messageOf } from './store.ts'
+import { ModelVisibilityToggle } from './ModelVisibilityToggle.tsx'
 import { ReasoningEffortEditor } from './ReasoningEffortEditor.tsx'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -82,8 +83,8 @@ export interface ModelListEditorProps {
    * told what the field already says.
    */
   probeBlocked?: keyof typeof en | undefined
-  /** Wire face the fetch action calls. */
-  api: Pick<IApiClient, 'llm'>
+  /** Wire face the fetch action and the visibility toggle call. */
+  api: Pick<IApiClient, 'llm' | 'settings'>
   /** Section copy. */
   t: (key: keyof typeof en) => string
   /** Disable every control (read-only deployment or a pending write). */
@@ -425,6 +426,13 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                   onChange={onChange}
                   api={api}
                   {...probe.provider === undefined ? {} : { provider: probe.provider }}
+                  t={t}
+                  disabled={disabled}
+                />
+                <ModelVisibilityToggle
+                  modelId={textOf(model, 'id')}
+                  {...probe.provider === undefined ? {} : { provider: probe.provider }}
+                  api={api}
                   t={t}
                   disabled={disabled}
                 />
