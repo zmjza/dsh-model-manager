@@ -22,10 +22,15 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 // Type-only: pulls the ctx.remote merge and the forwarded-event key face.
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
+// Type-only: pulls the modelDirectories Context merge (ctx.modelDirectories).
+import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
+// Type-only: pulls the composer slot map merge (conversation.input.right).
+import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
 import { ModelsSettingsStore } from './store.ts'
 import { en, zh, type ModelsKey } from './locales.ts'
+import { EffortSlider } from './EffortSlider.tsx'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
 export type { ModelsKey } from './locales.ts'
@@ -59,7 +64,7 @@ export function refreshIfLoaded(controller: ModelsSettingsStore): void {
  * ui-settings' apply, whose activation order relative to this one is NOT
  * constrained; registration depends on each slot through `slots.inject()`.
  */
-export const inject = ['slots', 'locale', 'connection', 'remote']
+export const inject = ['slots', 'locale', 'connection', 'remote', 'modelDirectories']
 
 /**
  * Register the enhanced Models section once the `settings.section` declaration
@@ -105,4 +110,17 @@ export function apply(ctx: ClientContext): void {
     label: () => t('nav'),
     inject: injected,
   }, ModelsSection))
+
+  // Composer thinking-level slider: a small control in the tool row, before
+  // the model select. Reads/writes the shared per-session ModelDirectory, so
+  // it stays in lockstep with the official effort panel.
+  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
+    name: 'conversation.input.right',
+    id: 'model-manager-effort-slider',
+    order: 10,
+    inject: () => ({
+      modelDirectories: ctx.modelDirectories,
+      t,
+    }),
+  }, EffortSlider))
 }
