@@ -432,7 +432,6 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                 <ModelVisibilityToggle
                   modelId={textOf(model, 'id')}
                   {...probe.provider === undefined ? {} : { provider: probe.provider }}
-                  api={api}
                   t={t}
                   disabled={disabled}
                 />

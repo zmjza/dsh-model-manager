@@ -5,13 +5,14 @@
  * registered route's advertised efforts from `llm.models`.
  */
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { IApiClient } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   modelEfforts, THINKING_LEVELS, withModelEfforts,
   type DeepSeekModelDraft, type ThinkingLevel,
 } from './DeepSeekModelsEditor.tsx'
+import { inferEfforts } from './model-efforts.ts'
 import { messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -66,24 +67,53 @@ export function ReasoningEffortEditor(props: ReasoningEffortEditorProps): ReactN
     applyEfforts(next.filter(candidate => candidate !== 'off'))
   }
 
-  const detect = async (): Promise<void> => {
-    if (api === undefined || provider === undefined) return
-    const id = typeof model['id'] === 'string' ? model['id'] : ''
-    if (id.length === 0) return
+  const modelId = typeof model['id'] === 'string' ? model['id'] : ''
+  const modelName = typeof model['name'] === 'string' ? model['name'] : undefined
+  /** Advertised efforts from the registered route, when discoverable. */
+  const detect = async (): Promise<readonly ThinkingLevel[]> => {
+    if (api === undefined || provider === undefined) return []
+    const response = await api.llm.models({})
+    if (!response.result.ok) throw new Error(response.result.error.message)
+    const group = response.result.value.groups.find(candidate => candidate.id === provider)
+    const found = group?.models.find(candidate => candidate.id === modelId)
+    const efforts = found?.reasoning?.efforts ?? []
+    return [...new Set(
+      efforts
+        .map(effort => levelOf(effort.id))
+        .filter((level): level is ThinkingLevel => level !== undefined),
+    )].filter(level => level !== 'off')
+  }
+
+  /** Resolve the levels to fill: advertised first, name inference second. */
+  const resolveEfforts = async (): Promise<readonly ThinkingLevel[]> => {
+    if (modelId.length === 0) return []
+    if (api !== undefined && provider !== undefined) {
+      const advertised = await detect()
+      if (advertised.length > 0) return advertised
+    }
+    // Fall back to name-based inference so a custom gateway or a not-yet-
+    // registered route still gets the levels its family is known for.
+    return inferEfforts(modelId, modelName)
+  }
+
+  // Auto-fill on model id change when nothing is selected yet (name inference
+  // only — advertised efforts stay a manual Detect action).
+  const lastIdRef = useRef<string>('')
+  useEffect(() => {
+    if (lastIdRef.current === modelId) return
+    lastIdRef.current = modelId
+    if (modelId.length === 0 || selected.length > 0) return
+    const inferred = inferEfforts(modelId, modelName)
+    if (inferred.length > 0) applyEfforts(inferred)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId])
+
+  const runDetect = async (): Promise<void> => {
+    if (modelId.length === 0) return
     setBusy(true)
     setFailure(undefined)
     try {
-      const response = await api.llm.models({})
-      if (!response.result.ok) throw new Error(response.result.error.message)
-      const group = response.result.value.groups.find(candidate => candidate.id === provider)
-      const found = group?.models.find(candidate => candidate.id === id)
-      const efforts = found?.reasoning?.efforts ?? []
-      const levels = efforts
-        .map(effort => levelOf(effort.id))
-        .filter((level): level is ThinkingLevel => level !== undefined)
-      // Deduplicate in escalation order; `off` alone leaves the model without
-      // reasoningEfforts (non-reasoning), exactly like an empty selection.
-      const unique = [...new Set(levels)].filter(level => level !== 'off')
+      const unique = await resolveEfforts()
       if (unique.length > 0) applyEfforts(unique)
       else setFailure(t('effortDetectNone'))
     } catch (error) {
@@ -111,12 +141,12 @@ export function ReasoningEffortEditor(props: ReasoningEffortEditorProps): ReactN
             </label>
           )
         })}
-        {api !== undefined && provider !== undefined ? (
+        {modelId.length > 0 ? (
           <button
             type="button"
             className={styles['linkButton']}
             disabled={disabled || busy}
-            onClick={() => { void detect() }}
+            onClick={() => { void runDetect() }}
           >
             {busy ? t('effortDetecting') : t('effortDetect')}
           </button>
