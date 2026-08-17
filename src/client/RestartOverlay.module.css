@@ -1,0 +1,139 @@
+/* R7 — Restart overlay (bottom-right floating control + confirm card).
+ * Lives in the shell.overlay layer: the layer is click-through by default, so
+ * this seat opts back into pointer events. Colors use DSH theme tokens (the
+ * same verified set as the Effort slider: --dsw-alias-bg-base, -border-*,
+ * -label-*, -interactive-bg-hover; no hard-coded hex surfaces). */
+
+.seat {
+  position: fixed;
+  right: 18px;
+  bottom: 64px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  pointer-events: auto;
+}
+
+/* The shell.overlay host mounts at z:20 — in some layouts (Explorer/details
+   column open) it ends up BELOW the columns, which swallows clicks on this
+   fixed control. Raise the whole overlay layer above every column (matches
+   the slot's documented "frame-wide, above every column" intent). */
+:global([class*='overlayLayer']) {
+  z-index: 2147483000 !important;
+}
+:global([class*='overlayLayer'] input),
+:global([class*='overlayLayer'] button),
+:global([class*='overlayLayer'] [role='dialog']) {
+  position: relative;
+  z-index: 2147483200 !important;
+}
+
+/* ---- collapsed trigger: a compact round power button ---- */
+.button {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  background: var(--dsw-alias-bg-base, #fff);
+  color: var(--dsw-alias-label-secondary, #61666b);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 18%);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, transform 120ms ease, color 150ms ease;
+}
+
+.button:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+  color: var(--dsw-alias-label-primary, #0f1115);
+  transform: scale(1.06);
+}
+
+.buttonGlyph {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ---- confirm / status card ---- */
+.card {
+  min-width: 264px;
+  max-width: 300px;
+  margin-bottom: 10px;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 28%);
+  background: var(--dsw-alias-bg-base, #fff);
+  color: var(--dsw-alias-label-primary, #0f1115);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+}
+
+.cardBody {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  white-space: normal;
+}
+
+.cardActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.ghost {
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  background: transparent;
+  color: var(--dsw-alias-label-secondary, #61666b);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ghost:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
+.primary {
+  height: 26px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: none;
+  background: rgb(139 92 255 / 92%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.primary:hover {
+  background: rgb(139 92 255);
+}
+
+/* ---- restarting spinner ---- */
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid rgb(139 92 255 / 30%);
+  border-top-color: rgb(139 92 255);
+  animation: restart-spin 0.8s linear infinite;
+}
+
+@keyframes restart-spin {
+  to { transform: rotate(360deg); }
+}

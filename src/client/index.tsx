@@ -26,11 +26,15 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
 // Type-only: pulls the composer slot map merge (conversation.input.right).
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
+// Type-only: pulls the frame-wide shell.overlay slot (R7 restart control).
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
 import { ModelsSettingsStore } from './store.ts'
 import { en, zh, type ModelsKey } from './locales.ts'
 import { EffortSlider } from './EffortSlider.tsx'
+import { RestartOverlay } from './RestartOverlay.tsx'
+import { ToolCardDecorator } from './ToolCardDecorator.tsx'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
 export type { ModelsKey } from './locales.ts'
@@ -123,4 +127,23 @@ export function apply(ctx: ClientContext): void {
       t,
     }),
   }, EffortSlider))
+
+  // R7 — restart-service button: a small floating control in the frame-wide
+  // overlay layer (root scope, orders among other overlays). Confirming POSTs
+  // the host route /api/model-manager/restart and returns to the page.
+  ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+    name: 'shell.overlay',
+    id: 'model-manager-restart',
+    order: 1000,
+  }, RestartOverlay))
+
+  // R8 — tool-call card decorator: replace the default 'tool-call' chat-node
+  // renderer with the four-colour + ±-badge card. The keyed slot elects the
+  // lowest-priority live entry, so -1000 (below the shipped priority 0) wins.
+  // Keyed slots identify entries by `key` (no `id`).
+  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+    name: 'conversation.chat.node',
+    key: 'tool-call',
+    priority: -1000,
+  }, ToolCardDecorator))
 }

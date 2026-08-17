@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-manager",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "DSH web plugin: model settings enhancement — same-family multi-gateway providers, per-model reasoning effort (thinking level) configuration with auto-detection, composer slider, and model visibility control",
   "author": "zmjza",
   "license": "MIT",
@@ -76,7 +76,9 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "@deepseek-ai/dsh-client-ui-model-selection": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6"
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "^0.1.0-rc.6"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -100,7 +102,9 @@
     "typescript": "^5.6.0",
     "vitest": "^4.1.8",
     "@deepseek-ai/dsh-client-ui-model-selection": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6"
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-host-webserver": "0.1.0-rc.6"
   },
   "engines": {
     "node": ">=20"

@@ -1,0 +1,166 @@
+/* R8 — Tool-call decorator: PURE COLOUR, no separate frame (per user).
+ *
+ * Tool calls render as open rows (no card box/border/rounded frame): the tool
+ * name and its ± badge are the tool's colour (fixed four-colour set), running
+ * pulses, errors go red. Reasoning / "think" blocks are tinted blue via the
+ * :global reasoning hook. The expandable payload keeps a flat look. */
+
+.row {
+  color: var(--dsw-alias-label-primary, #0f1115);
+}
+
+.row[data-error] .name,
+.row[data-error] .badge {
+  color: rgb(224 49 49);
+}
+
+.head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.head:hover {
+  background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
+}
+
+/* the fixed four-colour set drives the accent via a local custom property */
+.row[data-color='blue'] { --accent: rgb(56 132 255); }
+.row[data-color='green'] { --accent: rgb(34 170 110); }
+.row[data-color='yellow'] { --accent: rgb(231 183 32); } /* soft light yellow */
+.row[data-color='red'] { --accent: rgb(224 49 49); }
+
+/* per-tool icon — inherits the accent colour (pure colour, no frame) */
+.icon {
+  flex: none;
+  color: var(--accent, rgb(139 92 255));
+}
+
+.statusDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--accent, rgb(139 92 255));
+  opacity: 0;
+}
+
+.dotRunning {
+  opacity: 1;
+  animation: tool-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+/* the tool name is PURE colour — no chip, no underline, no frame */
+.name {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: var(--accent, rgb(139 92 255));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+
+/* the file being read / written / edited — muted, right after the name */
+.path {
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary, #a0a4ab);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* the +N −M badge — pure coloured text, no pill background */
+.badge {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--accent, rgb(139 92 255));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chevron {
+  color: var(--dsw-alias-label-tertiary, #a0a4ab);
+  font-size: 10px;
+}
+
+.children {
+  margin-left: 16px;
+  padding-left: 9px;
+  border-left: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 2px;
+  padding-bottom: 4px;
+}
+
+.details {
+  margin: 2px 8px 6px 19px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-layer-3, rgb(0 0 0 / 4%));
+}
+
+.sectionTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dsw-alias-label-tertiary, #a0a4ab);
+  margin: 6px 0 4px;
+}
+
+.pre {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--dsw-alias-label-secondary, #61666b);
+}
+
+.preError {
+  color: rgb(224 49 49);
+}
+
+.runningHint {
+  font-size: 11px;
+  color: var(--dsw-alias-label-tertiary, #a0a4ab);
+}
+
+/* ---- think / reasoning is blue (user requirement) ----------------------
+   The reasoning disclosure lives inside the assistant node (not a slot we own).
+   Its root carries a stable `data-variant="think"` (verified against the real
+   DSH reasoning row), so we tint it globally blue — the CSS applies as soon as
+   the block streams in. */
+:global([data-variant='think']) {
+  --mm-think: rgb(56 132 255);
+  color: rgb(56 132 255) !important;
+}
+:global([data-variant='think']) * {
+  color: inherit !important;
+}
+:global([data-variant='think'] [class*='chevron']) {
+  color: var(--mm-think) !important;
+  opacity: 0.65;
+}
