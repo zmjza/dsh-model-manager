@@ -22,14 +22,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { handleRestartRequest } from './host/restart.ts'
 import { backfillRetryPolicy, backfillShellTimeout, handleApplyRetryPolicy } from './host/retry-policy-backfill.ts'
+import { backfillModelRetry, handleUpdateModelRetry } from './host/model-retry.ts'
+import { handleTestProvider } from './host/test-provider.ts'
 
-/** Services this plugin needs before `apply` runs (webServer serves the routes, settings powers the retry backfill). */
-export const inject = ['webServer', 'settings']
+/** Services this plugin needs before `apply` runs (webServer serves the routes, settings powers the retry backfill, credentials resolves keys for the test-link probe). */
+export const inject = ['webServer', 'settings', 'credentials']
 
 /**
  * Register this plugin's endpoints once the web server is up.
- *   POST /api/model-manager/restart            → autostart + spawn detached + exit old
- *   POST /api/model-manager/apply-retry-policy → re-stamp retry policy (R9#3)
+ *   POST /api/model-manager/restart             → autostart + spawn detached + exit old
+ *   POST /api/model-manager/apply-retry-policy  → re-stamp retry policy (R9#3)
+ *   POST /api/model-manager/test-provider       → test-link probe (R? — 测试链接)
+ *   POST /api/model-manager/update-model-retry  → per-model retry count (R? — 逐模型重试)
  * @param ctx - host root context (services resolved).
  */
 export function apply(ctx: Context): void {
@@ -43,6 +47,16 @@ export function apply(ctx: Context): void {
     path: '/api/model-manager/apply-retry-policy',
     handler: handleApplyRetryPolicy(ctx),
   })
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/model-manager/test-provider',
+    handler: handleTestProvider(ctx),
+  })
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/model-manager/update-model-retry',
+    handler: handleUpdateModelRetry(ctx),
+  })
 
   // R9#3 — stamp the retry policy on every existing pi-ai (custom) provider,
   // and raise the bash command deadline (2min→10min) so long-running commands
@@ -54,5 +68,8 @@ export function apply(ctx: Context): void {
     setTimeout(() => {
       void backfillShellTimeout(ctx).catch(() => 0)
     }, at + 400)
+    setTimeout(() => {
+      void backfillModelRetry(ctx).catch(() => 0)
+    }, at + 800)
   }
 }

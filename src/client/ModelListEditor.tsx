@@ -189,6 +189,30 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const capacityText = (model: ModelDraft, index: number, field: CapacityField): string =>
     editing.get(bufferKey(index, field)) ?? capacitySpelling(numberOf(model, field))
 
+  /** Per-row text buffer for the retry count (typed as a number field). */
+  const [retryBuffer, setRetryBuffer] = useState<Readonly<Record<number, string>>>({})
+
+  /** What the retry count field shows: typed text, else the stored count. */
+  const retryText = (model: ModelDraft, index: number): string => {
+    if (retryBuffer[index] !== undefined) return retryBuffer[index]
+    const count = numberOf(model, 'maxRetries')
+    return count === undefined ? '' : String(count)
+  }
+
+  /** Keep keystrokes in the buffer and persist a valid integer on the row. */
+  const editRetry = (index: number, text: string): void => {
+    setRetryBuffer(current => ({ ...current, [index]: text }))
+    const trimmed = text.trim()
+    if (trimmed.length === 0) {
+      patch(index, { maxRetries: undefined })
+      return
+    }
+    const parsed = Number.parseInt(trimmed, 10)
+    if (!Number.isNaN(parsed) && parsed >= 0 && parsed <= 20) {
+      patch(index, { maxRetries: parsed })
+    }
+  }
+
   /** Drop one row's entries and shift the rows after it down, in one pass. */
   const reindexOnRemove = (
     current: ReadonlyMap<string, string>,
@@ -385,6 +409,15 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                   return next
                 })
                 setEditing(current => reindexOnRemove(current, index))
+                setRetryBuffer(current => {
+                  const next: Record<number, string> = {}
+                  for (const [key, value] of Object.entries(current)) {
+                    const at = Number(key)
+                    if (at === index) continue
+                    next[at > index ? at - 1 : at] = value
+                  }
+                  return next
+                })
               }}
             >
               <IconTrash />
@@ -417,6 +450,21 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
                     aria-label={`${t('modelMaxTokens')} ${index + 1}`}
                     disabled={disabled}
                     onChange={(event) => { editCapacity(index, 'maxTokens', event.target.value) }}
+                  />
+                </label>
+                <label className={styles['modelField']}>
+                  <span className={styles['modelFieldLabel']}>{t('modelRetry')}</span>
+                  <input
+                    className={styles['input']}
+                    type="number"
+                    min={0}
+                    max={20}
+                    step={1}
+                    value={retryText(model, index)}
+                    placeholder="5"
+                    aria-label={`${t('modelRetry')} ${index + 1}`}
+                    disabled={disabled}
+                    onChange={(event) => { editRetry(index, event.target.value) }}
                   />
                 </label>
                 <ReasoningEffortEditor

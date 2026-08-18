@@ -19,6 +19,7 @@ import { Button, IconPlusOutline16, Modal } from '@deepseek-ai/dsh-client-ui-pri
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-web-react'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
 import { deriveKeyRef, isFamilyRoute, messageOf, nextRouteId, protocolChoices, providerUsable } from './store.ts'
+import { getPath } from '@deepseek-ai/dsh-client-schema-form'
 import type { ModelsSettingsState, ModelsSettingsStore, ProviderRow } from './store.ts'
 import { ProviderEditor, type ProviderEditorProps } from './ProviderEditor.tsx'
 import type { en } from './locales.ts'
@@ -163,6 +164,34 @@ export function providerCopy(template: string, target: ProviderIdentity): string
   return template.replace('{provider}', () => providerTargetLabel(target))
 }
 
+/** The classified outcome of a 「测试连通性」 probe, as returned by the host. */
+interface TestProbeResult {
+  ok: boolean
+  kind?: string
+  latencyMs?: number
+  model?: string
+  detail?: string
+  reply?: string
+}
+
+/** Localize a probe verdict. */
+function testLabel(t: (key: keyof typeof en) => string, result: TestProbeResult): string {
+  if (result.ok && result.kind === 'ok') {
+    return t('testOk')
+      .replace('{model}', result.model ?? '?')
+      .replace('{ms}', String(result.latencyMs ?? '?'))
+  }
+  const base = result.kind === 'auth' ? t('testAuth')
+    : result.kind === 'network' ? t('testNetwork')
+      : result.kind === 'timeout' ? t('testTimeout')
+        : result.kind === 'missing' ? t('testMissing')
+          : result.kind === 'model' ? t('testModel')
+            : t('testInvalid')
+  return result.detail === undefined || result.detail.length === 0
+    ? base
+    : `${base}${t('testDetail').replace('{detail}', result.detail)}`
+}
+
 /**
  * Render the Models section content column.
  * @param props - slot-delivered injected dependencies.
@@ -188,6 +217,177 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
   const [savedTarget, setSavedTarget] = useState<ProviderIdentity | undefined>(undefined)
   const [declaring, setDeclaring] = useState(false)
   const [dismissedSetup, setDismissedSetup] = useState<ReadonlySet<string>>(() => new Set())
+  // 「测试连通性」 modal: which provider it is open for, the pickable models,
+  // the chosen one, and the console log the probe appends to as it runs.
+  const [testOpen, setTestOpen] = useState<string | undefined>(undefined)
+  const [testOptions, setTestOptions] = useState<readonly string[]>([])
+  const [testModel, setTestModel] = useState<string>('')
+  const [testBusy, setTestBusy] = useState(false)
+  const [testLog, setTestLog] = useState<readonly { kind: 'info' | 'ok' | 'err'; text: string }[]>([])
+  // The live-streamed reply, shown as one 响应: line that grows as deltas arrive.
+  const [testReply, setTestReply] = useState('')
+  // The final verdict line (✓ 测试完成! / ✗ 测试失败: …).
+  const [testOutcome, setTestOutcome] = useState<{ ok: boolean; text: string } | undefined>(undefined)
+  // Measured round-trip time shown as a status chip once the probe completes.
+  const [testLatency, setTestLatency] = useState<number | undefined>(undefined)
+  // 「各模型重试」 panel: which provider row it is open for + per-id edits.
+  const [retryOpen, setRetryOpen] = useState<string | undefined>(undefined)
+  const [retryDrafts, setRetryDrafts] = useState<Readonly<Record<string, string>>>({})
+  const [retrySaving, setRetrySaving] = useState(false)
+  const [retryNotice, setRetryNotice] = useState<string | undefined>(undefined)
+
+  /** Open the test modal for one row, preloading its pickable models. */
+  const openTest = (row: ProviderRow): void => {
+    const namespace = state.namespaces.get(row.entry.settingsNs)
+    const profile = namespace === undefined
+      ? undefined
+      : getPath(namespace.value, row.entry.settingsPath) as { models?: unknown[] } | undefined
+    const models = Array.isArray(profile?.models) ? profile.models : []
+    const ids: string[] = []
+    for (const entry of models) {
+      if (typeof entry === 'object' && entry !== null && typeof (entry as { id?: unknown }).id === 'string') {
+        ids.push((entry as { id: string }).id)
+      }
+    }
+    setTestOptions(ids)
+    setTestModel(ids[0] ?? '')
+    setTestLog([])
+    setTestReply('')
+    setTestOutcome(undefined)
+    setTestLatency(undefined)
+    setTestOpen(row.entry.provider)
+  }
+
+  /** Run the probe for the modal's chosen model, appending to the log. */
+  const runTest = async (): Promise<void> => {
+    if (testOpen === undefined || testModel.trim().length === 0) return
+    const row = state.rows.find(candidate => candidate.entry.provider === testOpen)
+    if (row === undefined) return
+    const append = (kind: 'info' | 'ok' | 'err', text: string): void => {
+      setTestLog(current => [...current, { kind, text }])
+    }
+    setTestBusy(true)
+    setTestReply('')
+    setTestOutcome(undefined)
+    append('info', t('testLogStart').replace('{name}', providerTargetLabel(targetOf(row))))
+    append('info', t('testLogType').replace('{type}', 'apikey'))
+    append('info', t('testLogModel').replace('{model}', testModel.trim()))
+    append('info', t('testLogSend'))
+    try {
+      const response = await fetch('/api/model-manager/test-provider', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+        body: JSON.stringify({ provider: testOpen, model: testModel.trim() }),
+        cache: 'no-store',
+      })
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})) as { error?: string }
+        append('err', t('testLogBad').replace('{reason}', data.error ?? `HTTP ${response.status}`))
+        return
+      }
+      if (response.body === null) {
+        append('err', t('testLogBad').replace('{reason}', 'empty stream'))
+        return
+      }
+      // Consume the host's server-sent events and update the console live.
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let currentEvent = ''
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        let index: number
+        while ((index = buffer.indexOf('\n')) >= 0) {
+          const line = buffer.slice(0, index).trim()
+          buffer = buffer.slice(index + 1)
+          if (line.length === 0) { currentEvent = ''; continue }
+          if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim()
+            continue
+          }
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          let data: Record<string, unknown>
+          try { data = JSON.parse(payload) as Record<string, unknown> } catch { continue }
+          if (currentEvent === 'connected') {
+            append('info', t('testLogConnected'))
+          } else if (currentEvent === 'content') {
+            const text = typeof data['text'] === 'string' ? data['text'] : ''
+            if (text.length > 0) setTestReply(current => current + text)
+          } else if (currentEvent === 'complete') {
+            const text = typeof data['text'] === 'string' ? data['text'] : ''
+            if (text.length > 0) setTestReply(text)
+            setTestOutcome({ ok: true, text: t('testDone') })
+          } else if (currentEvent === 'latency') {
+            if (typeof data['ms'] === 'number') setTestLatency(data['ms'])
+          } else if (currentEvent === 'error') {
+            const detail = typeof data['detail'] === 'string' ? data['detail'] : String(data['kind'] ?? '')
+            const kind = typeof data['kind'] === 'string' ? data['kind'] : 'invalid'
+            setTestOutcome({
+              ok: false,
+              text: t('testLogBad').replace('{reason}', testLabel(t, { ok: false, kind, detail })),
+            })
+          }
+        }
+      }
+      // Stream ended without a verdict (e.g. a gateway that streams nothing):
+      // a connected live stream still counts as a passing connectivity test.
+      setTestOutcome(current => current ?? { ok: true, text: t('testDone') })
+    } catch (error) {
+      append('err', t('testLogBad').replace('{reason}', String(error)))
+      setTestOutcome({ ok: false, text: t('testLogBad').replace('{reason}', String(error)) })
+    } finally {
+      setTestBusy(false)
+    }
+  }
+
+  /** Open the per-model retry editor for one row, seeding drafts from settings. */
+  const openRetry = (row: ProviderRow): void => {
+    const namespace = state.namespaces.get(row.entry.settingsNs)
+    const profile = namespace === undefined
+      ? undefined
+      : getPath(namespace.value, row.entry.settingsPath) as { models?: unknown[] } | undefined
+    const models = Array.isArray(profile?.models) ? profile.models : []
+    const drafts: Record<string, string> = {}
+    for (const entry of models) {
+      if (typeof entry !== 'object' || entry === null) continue
+      const model = entry as Record<string, unknown>
+      if (typeof model['id'] !== 'string') continue
+      drafts[model['id']] = String(typeof model['maxRetries'] === 'number' ? model['maxRetries'] : 5)
+    }
+    setRetryDrafts(drafts)
+    setRetryNotice(undefined)
+    setRetryOpen(row.entry.provider)
+  }
+
+  /** Save the per-model retry counts and re-derive the provider's effective one. */
+  const saveRetry = async (row: ProviderRow): Promise<void> => {
+    const models = Object.entries(retryDrafts).map(([id, text]) => ({
+      id,
+      maxRetries: Number.parseInt(text.replace(/\D/g, ''), 10) || 5,
+    }))
+    if (models.length === 0) return
+    setRetrySaving(true)
+    setRetryNotice(undefined)
+    try {
+      const response = await fetch('/api/model-manager/update-model-retry', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ provider: row.entry.provider, models }),
+        cache: 'no-store',
+      })
+      const data = await response.json().catch(() => ({})) as { ok?: boolean; error?: string }
+      if (!response.ok) throw new Error(data.error ?? `HTTP ${response.status}`)
+      setRetryNotice(t('retrySaved'))
+      void controller.load()
+    } catch (error) {
+      setRetryNotice(String(error))
+    } finally {
+      setRetrySaving(false)
+    }
+  }
 
   const announceSaved = (target: ProviderIdentity): void => {
     // Announced only once the refreshed directory is in the snapshot the
@@ -344,6 +544,7 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
           const credentialMissing = !credentialConfigured
             && row.apiKeyEnv !== undefined
             && row.credential?.configured === false
+          const retryIsOpen = retryOpen === row.entry.provider
           return (
             <li key={row.entry.provider} className={styles['rowCard']}>
               <div className={styles['rowHead']}>
@@ -392,6 +593,31 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
                   >
                     {t('edit')}
                   </button>
+                  {row.entry.settingsNs === 'llm-pi-ai' && (
+                    <>
+                      <button
+                        type="button"
+                        className={styles['secondaryButton']}
+                        aria-label={providerCopy(t('testLink'), target)}
+                        disabled={!state.writable}
+                        onClick={() => { openTest(row) }}
+                      >
+                        {t('testLink')}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles['secondaryButton']}
+                        aria-label={providerCopy(t('retrySettings'), target)}
+                        disabled={!state.writable}
+                        onClick={() => {
+                          if (retryOpen === row.entry.provider) setRetryOpen(undefined)
+                          else openRetry(row)
+                        }}
+                      >
+                        {t('retrySettings')}
+                      </button>
+                    </>
+                  )}
                   {row.removable
                     ? (
                       <button
@@ -411,6 +637,77 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
                     : null}
                 </span>
               </div>
+              {retryIsOpen
+                ? (() => {
+                  const retryNamespace = state.namespaces.get(row.entry.settingsNs)
+                  const retryProfile = retryNamespace === undefined
+                    ? undefined
+                    : getPath(retryNamespace.value, row.entry.settingsPath) as { models?: unknown[] } | undefined
+                  const retryModels = Array.isArray(retryProfile?.models) ? retryProfile.models : []
+                  return (
+                    <div className={styles['retryPanel']}>
+                      <p className={styles['notice']}>{t('retryHint')}</p>
+                      <div className={styles['retryModelList']}>
+                        {retryModels.map((entry) => {
+                          if (typeof entry !== 'object' || entry === null) return null
+                          const model = entry as Record<string, unknown>
+                          if (typeof model['id'] !== 'string') return null
+                          const id = model['id']
+                          return (
+                            <label key={id} className={styles['retryModelRow']}>
+                              <span className={styles['retryModelId']}>{id}</span>
+                              <input
+                                className={styles['input']}
+                                type="number"
+                                min={0}
+                                max={20}
+                                step={1}
+                                value={retryDrafts[id] ?? '5'}
+                                aria-label={`${t('modelRetry')} ${id}`}
+                                disabled={!state.writable || retrySaving}
+                                onChange={(event) => {
+                                  const text = event.target.value.replace(/[^\d]/g, '')
+                                  setRetryDrafts(current => ({ ...current, [id]: text }))
+                                }}
+                              />
+                            </label>
+                          )
+                        })}
+                      </div>
+                      <div className={styles['retryActions']}>
+                        <button
+                          type="button"
+                          className={styles['secondaryButton']}
+                          disabled={retrySaving}
+                          onClick={() => {
+                            const next: Record<string, string> = {}
+                            for (const key of Object.keys(retryDrafts)) next[key] = '5'
+                            setRetryDrafts(next)
+                          }}
+                        >
+                          {t('retryReset')}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles['primaryButton']}
+                          disabled={!state.writable || retrySaving}
+                          onClick={() => { void saveRetry(row) }}
+                        >
+                          {retrySaving ? t('retrySaved') : t('retrySave')}
+                        </button>
+                        <button
+                          type="button"
+                          className={styles['secondaryButton']}
+                          onClick={() => { setRetryOpen(undefined) }}
+                        >
+                          {t('close')}
+                        </button>
+                      </div>
+                      {retryNotice === undefined ? null : <p className={styles['notice']}>{retryNotice}</p>}
+                    </div>
+                  )
+                })()
+                : null}
               {open
                 ? renderProviderEditor({
                   target,
@@ -547,6 +844,89 @@ function Loaded({ injected }: { injected: ModelsSectionInjected }): ReactNode {
               </div>
             )}
       </div>
+      <Modal
+        open={testOpen !== undefined}
+        onClose={() => { if (!testBusy) setTestOpen(undefined) }}
+        title={t('testModalTitle')}
+        closeLabel={t('close')}
+        className={styles['testDialog'] as string}
+      >
+        <div className={styles['testStatusBar']}>
+          <span
+            className={`${styles['testPulse']}${testBusy && testOutcome === undefined ? ` ${styles['testPulseBusy']}` : ''}`}
+            aria-hidden="true"
+          />
+          <span className={styles['testStatusName']}>{testOpen === undefined ? '' : testOpen}</span>
+          <span className={styles['testStatusChip']}>{t('testLogType').replace('{type}', 'apikey')}</span>
+          <span className={styles['testStatusChip']}>{t('testModalStream')}</span>
+          {testLatency === undefined ? null : <span className={styles['testStatusChip']}>{testLatency}ms</span>}
+        </div>
+        <div className={styles['testPickRow']}>
+          <span className={styles['testPickLabel']}>{t('testModelPick')}</span>
+          <select
+            className={`${styles['input']} ${styles['selectInput']}`}
+            value={testModel}
+            aria-label={t('testModelPick')}
+            disabled={testBusy || testOptions.length === 0}
+            onChange={(event) => { setTestModel(event.target.value) }}
+          >
+            {testOptions.map(id => <option key={id} value={id}>{id}</option>)}
+          </select>
+          <button
+            type="button"
+            className={styles['testStartBtn']}
+            disabled={testBusy || testModel.trim().length === 0}
+            onClick={() => { void runTest() }}
+          >
+            <span className={styles['testStartGlyph']}>▸</span>
+            {testBusy ? t('testRunning') : t('testStart')}
+          </button>
+        </div>
+        <div className={styles['testConsole']} role="log" aria-live="polite">
+          {testLog.length === 0 && testReply.length === 0 && testOutcome === undefined
+            ? <div className={`${styles['testLine']} ${styles['testMuted']}`}>{t('testConsoleEmpty')}</div>
+            : testLog.map((line, index) => (
+              <div
+                key={index}
+                className={`${styles['testLine']} ${
+                  line.kind === 'ok' ? styles['testOk'] : line.kind === 'err' ? styles['testErr'] : styles['testInfo']
+                }`}
+              >
+                {line.text}
+              </div>
+            ))}
+          {testBusy && testOutcome === undefined
+            ? <div className={`${styles['testLine']} ${styles['testInfo']} ${styles['testCursor']}`}>{t('testRunning')}</div>
+            : null}
+          {testReply.length > 0
+            ? <div className={`${styles['testLine']} ${styles['testInfo']}`}>{t('testLogReply').replace('{reply}', testReply)}</div>
+            : null}
+          {testOutcome !== undefined
+            ? (
+              <div className={`${styles['testLine']} ${testOutcome.ok ? styles['testOk'] : styles['testErr']}`}>
+                {testOutcome.text}
+              </div>
+            )
+            : null}
+        </div>
+        <div className={styles['testActions']}>
+          <button
+            type="button"
+            className={styles['testGhostBtn']}
+            onClick={() => { setTestOpen(undefined) }}
+          >
+            {t('close')}
+          </button>
+          <button
+            type="button"
+            className={styles['testGhostBtn']}
+            disabled={testBusy || testLog.length === 0}
+            onClick={() => { void runTest() }}
+          >
+            {t('testRetry')}
+          </button>
+        </div>
+      </Modal>
       <Modal
         open={deleteTarget !== undefined}
         onClose={closeDelete}

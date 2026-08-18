@@ -153,7 +153,12 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         baseURL,
         // claude / gpt / gemini / grok families are multimodal — stamp their
         // input modalities so image/file sessions are not gated out (R).
-        models: models.map(model => ensureMultimodalInput({ ...model })),
+        // Every model also gets the default retry count (5) unless the card
+        // already set a per-model value (per-model request retry, R?).
+        models: models.map(model => ensureMultimodalInput({
+          ...model,
+          ...typeof model['maxRetries'] === 'number' ? {} : { maxRetries: 5 },
+        })),
         // Retry up to 5 attempts and include AUTH in the retryable set, so a
         // transient gateway 401 (valid key, occasional spurious auth failure)
         // is absorbed instead of killing the turn (R9#3).
