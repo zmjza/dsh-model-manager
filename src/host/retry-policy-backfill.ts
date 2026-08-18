@@ -81,6 +81,38 @@ export async function backfillRetryPolicy(ctx: Context) {
   }
 }
 
+/** Values the `shell` settings namespace should carry. */
+const SHELL_TIMEOUT_MS = 600_000 // one command may run up to 10 min by default
+const SHELL_MAX_TIMEOUT_MS = 1_800_000 // caller-requested timeout capped at 30 min
+
+/**
+ * Raise the bash command deadline so a long-running command (installing deps,
+ * building, serving, big searches) is no longer killed at the 2-minute default,
+ * which the user saw as "the turn stops at bash". Best-effort + idempotent.
+ * @param ctx - host root context.
+ */
+export async function backfillShellTimeout(ctx: Context) {
+  try {
+    const settings = (ctx.settings ?? undefined)
+    if (settings === undefined) return { changed: 0 }
+    const ns = 'shell' as unknown as Parameters<typeof settings.get>[0]
+    const current = settings.get(ns) as unknown
+    const section = typeof current === 'object' && current !== null ? current as Record<string, unknown> : {}
+    const timeoutMs = typeof section['timeoutMs'] === 'number' ? section['timeoutMs'] as number : undefined
+    const maxTimeoutMs = typeof section['maxTimeoutMs'] === 'number' ? section['maxTimeoutMs'] as number : undefined
+    // Leave values the user already set intentionally higher alone.
+    if (timeoutMs !== undefined && timeoutMs >= SHELL_TIMEOUT_MS && maxTimeoutMs !== undefined && maxTimeoutMs >= SHELL_MAX_TIMEOUT_MS) {
+      return { changed: 0 }
+    }
+    await settings.update(ns, { timeoutMs: SHELL_TIMEOUT_MS, maxTimeoutMs: SHELL_MAX_TIMEOUT_MS })
+    console.log('[dsh-model-manager] raised bash timeoutMs to 10min / maxTimeoutMs to 30min')
+    return { changed: 1 }
+  } catch (error) {
+    console.error('[dsh-model-manager] shell timeout backfill failed:', String(error))
+    return { changed: 0 }
+  }
+}
+
 /** HTTP handler for POST /api/model-manager/apply-retry-policy (manual trigger). */
 export function handleApplyRetryPolicy(ctx: Context) {
   return (_req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): void => {

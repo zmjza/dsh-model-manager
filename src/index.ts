@@ -21,7 +21,7 @@ import type { Context } from '@deepseek-ai/cordis'
 // Pulls the cordis Context.webServer merge (declared by dsh-host-webserver).
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { handleRestartRequest } from './host/restart.ts'
-import { backfillRetryPolicy, handleApplyRetryPolicy } from './host/retry-policy-backfill.ts'
+import { backfillRetryPolicy, backfillShellTimeout, handleApplyRetryPolicy } from './host/retry-policy-backfill.ts'
 
 /** Services this plugin needs before `apply` runs (webServer serves the routes, settings powers the retry backfill). */
 export const inject = ['webServer', 'settings']
@@ -44,11 +44,15 @@ export function apply(ctx: Context): void {
     handler: handleApplyRetryPolicy(ctx),
   })
 
-  // R9#3 — stamp the retry policy on every existing pi-ai (custom) provider.
-  // Retried at a few boot points in case the settings service mounts late.
+  // R9#3 — stamp the retry policy on every existing pi-ai (custom) provider,
+  // and raise the bash command deadline (2min→10min) so long-running commands
+  // no longer stop the turn. Retried at a few boot points (settings mounts late).
   for (const at of [2000, 8000, 20000]) {
     setTimeout(() => {
       void backfillRetryPolicy(ctx).catch(() => 0)
     }, at)
+    setTimeout(() => {
+      void backfillShellTimeout(ctx).catch(() => 0)
+    }, at + 400)
   }
 }
