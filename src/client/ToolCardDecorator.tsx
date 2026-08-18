@@ -91,11 +91,11 @@ function BadgeText({ badge }: { badge: DiffBadge }): ReactNode {
     )
   }
   if (badge.del === 0) return <span className={styles['badgeAdd']}>+{badge.add}</span>
-  if (badge.add === 0) return <span className={styles['badgeMinus']}>\u2212{badge.del}</span>
+  if (badge.add === 0) return <span className={styles['badgeMinus']}>-{badge.del}</span>
   return (
     <>
       <span className={styles['badgeAdd']}>+{badge.add}</span>{' '}
-      <span className={styles['badgeMinus']}>\u2212{badge.del}</span>
+      <span className={styles['badgeMinus']}>-{badge.del}</span>
     </>
   )
 }
