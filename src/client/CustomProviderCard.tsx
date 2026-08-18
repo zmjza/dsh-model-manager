@@ -29,6 +29,7 @@ import { EditorFooter } from './EditorFooter.tsx'
 import { validateDeepSeekModels } from './DeepSeekModelsEditor.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import type { ModelDraft } from './ModelListEditor.tsx'
+import { ensureMultimodalInput } from './family-modality.ts'
 import { deriveKeyRef, messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -149,7 +150,9 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         ...storesKey ? { apiKeyEnv: keyRef } : {},
         api: protocol,
         baseURL,
-        models: models.map(model => ({ ...model })),
+        // claude / gpt / gemini / grok families are multimodal — stamp their
+        // input modalities so image/file sessions are not gated out (R).
+        models: models.map(model => ensureMultimodalInput({ ...model })),
       }
       const response = await api.settings.mutate({
         ns: NS,

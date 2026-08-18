@@ -33,6 +33,7 @@ import {
 import { apiKeyFailure } from './apiKey.ts'
 import { EditorFooter } from './EditorFooter.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
+import { ensureMultimodalInput } from './family-modality.ts'
 import { deriveKeyRef, messageOf, protocolChoices } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -242,12 +243,18 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       && stringAt(fallback, 'apiKeyEnv') === undefined && keyValue.length > 0
       ? setPath(draft, ['apiKeyEnv'], keyRef)
       : draft
+    // claude / gpt / gemini / grok families are multimodal — re-stamping them
+    // on every pi-ai save also repairs profiles added before this default
+    // existed, so an image/file session is no longer gated out.
+    const final = layout === 'pi-ai' && Array.isArray(getPath(next, ['models']))
+      ? setPath(next, ['models'], (getPath(next, ['models']) as unknown[]).map(model => ensureMultimodalInput(model as Record<string, unknown>)))
+      : next
     if (props.credentialOnly !== true) {
       // The same checker gates the submit button, so a card cannot reach this
       // with a bad row; it stays because the schema check below would refuse
       // the write with a message naming a path instead of the row, and because
       // nothing but this function decides what is written.
-      const failure = validateDeepSeekModels(getPath(next, ['models']))
+      const failure = validateDeepSeekModels(getPath(final, ['models']))
       /* v8 ignore next 3 -- unreachable from the card: the same failure disables submit */
       if (failure !== undefined) {
         return `${t('model')} ${String(failure.index + 1)}: ${t(failure.key)}`
@@ -255,18 +262,18 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     }
     /* v8 ignore next -- apply is only reachable from the rendered card, which required a resolved node */
     if (props.credentialOnly !== true && node !== undefined && settingsPath.length === 0) {
-      const sectionError = validateDraft(node, next)
+      const sectionError = validateDraft(node, final)
       if (sectionError !== undefined) return sectionError
     }
     const materializesNativeProfile = layout === 'pi-ai'
       && fallback === undefined
       && committedOriginal === undefined
-      && Object.keys(next).length === 0
+      && Object.keys(final).length === 0
     const ops: SettingsPathOpView[] = props.credentialOnly === true
       ? []
       : materializesNativeProfile
         ? [{ op: 'set', path: [...settingsPath], value: {} }]
-        : pathOps(settingsPath, committedOriginal, next)
+        : pathOps(settingsPath, committedOriginal, final)
     if (ops.length > 0) {
       const response = await api.settings.mutate({ ns, ops, expectedRevision })
       if (!response.result.ok) {
@@ -276,7 +283,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       }
       setCommittedOriginal(getPath(response.result.value.user, settingsPath))
       setExpectedRevision(response.result.value.revision)
-      setDraft(next)
+      setDraft(final)
     }
     if (keyValue.length > 0) {
       const stored = await api.credentials.set({ ref: keyRef, value: keyValue })
