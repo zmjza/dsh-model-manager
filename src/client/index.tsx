@@ -36,7 +36,6 @@ import { EffortSlider } from './EffortSlider.tsx'
 import { AutoFullHistory } from './AutoFullHistory.tsx'
 import { RestartOverlay } from './RestartOverlay.tsx'
 import { ToolCardDecorator } from './ToolCardDecorator.tsx'
-import { DeleteSessionAction } from './DeleteSessionAction.tsx'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
 export type { ModelsKey } from './locales.ts'
@@ -157,13 +156,4 @@ export function apply(ctx: ClientContext): void {
     key: 'tool-call',
     priority: -1000,
   }, ToolCardDecorator))
-
-  // R9#2 — delete the current conversation: a trash action in the open
-  // session's header actions (our own list slot) with a two-step confirm; the
-  // host route then hard-deletes the persisted session.
-  ctx.slots.inject('conversation.session.header.actions', () => ctx.slots.register({
-    name: 'conversation.session.header.actions',
-    id: 'model-manager-delete-session',
-    order: 1000,
-  }, DeleteSessionAction))
 }

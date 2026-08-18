@@ -15,6 +15,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-settings'
 
+/** Max idle gap (no token) before the stream watchdog would abort, 20 min. */
+const STREAM_IDLE_TIMEOUT_MS = 1_200_000
+
 /**
  * The per-provider retry policy (shape matches NormalRetryPolicyConfig).
  * mode normal + maxRetries 5 + retryableCodes including AUTH (flaky-401 fix).
@@ -57,7 +60,13 @@ export async function backfillRetryPolicy(ctx: Context) {
         nextProviders[provider] = profile
         continue
       }
-      const nextProfile = { ...(profile as Record<string, unknown>), retryPolicy: RETRY_POLICY }
+      const nextProfile = {
+        ...(profile as Record<string, unknown>),
+        retryPolicy: RETRY_POLICY,
+        // No-output watchdog: raise from 5 min to 20 min so a slow reasoning /
+        // gateway-buffering gap cannot abort generation ("stops while writing").
+        streamIdleTimeoutMs: STREAM_IDLE_TIMEOUT_MS,
+      }
       nextProviders[provider] = plain(nextProfile)
       changed += 1
     }

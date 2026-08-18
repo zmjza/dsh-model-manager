@@ -158,6 +158,9 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         // transient gateway 401 (valid key, occasional spurious auth failure)
         // is absorbed instead of killing the turn (R9#3).
         retryPolicy: CUSTOM_RETRY_POLICY,
+        // No-output watchdog: 20 min instead of the 5 min default, so a slow
+        // reasoning / gateway buffering gap cannot abort generation.
+        streamIdleTimeoutMs: 1_200_000,
       }
       const response = await api.settings.mutate({
         ns: NS,

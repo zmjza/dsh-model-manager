@@ -96,6 +96,21 @@
   white-space: nowrap;
 }
 
+/* Only the ± counts get colour: +N green, −M red (the rest stays neutral). */
+.badgeAdd {
+  color: rgb(34 170 110);
+  font-weight: 600;
+}
+
+.badgeMinus {
+  color: rgb(224 49 49);
+  font-weight: 600;
+}
+
+.badgePath {
+  opacity: 0.85;
+}
+
 .chevron {
   color: var(--dsw-alias-label-tertiary, #a0a4ab);
   font-size: 10px;

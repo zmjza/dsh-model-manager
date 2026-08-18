@@ -15,7 +15,7 @@
  *   • recursive rendering of nested sub-calls.
  */
 
-import { useState } from 'react'
+import { Component, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ChatNode } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
@@ -30,9 +30,7 @@ export interface ToolCardRenderProps {
 /** Settled tool-call arm (carries `content`; the running arm does not). */
 function isResult(root: ToolCallBlock): root is Extract<ToolCallBlock, { content: unknown }> {
   return 'content' in root
-}
-
-function argsOf(root: ToolCallBlock): { name: string; argsRaw: string } {
+}function argsOf(root: ToolCallBlock): { name: string; argsRaw: string } {
   // ToolResultNode carries `call`; RunningToolCall carries name/argsRaw directly.
   return 'call' in root
     ? { name: root.call?.name ?? root.callId, argsRaw: root.call?.argsRaw ?? '{}' }
@@ -82,11 +80,24 @@ function textOf(blocks: readonly unknown[] | undefined): string {
     .trim()
 }
 
-function badgeLabel(badge: DiffBadge, del: string): string {
-  if (badge.kind === 'delete') return `${del} ${badge.path}`
-  if (badge.del === 0) return `+${badge.add}`
-  if (badge.add === 0) return `\u2212${badge.del}`
-  return `+${badge.add} \u2212${badge.del}`
+/** The ± badge row: only the +N / −M counts carry colour (green add, red
+ *  minus); the rest stays with the neutral badge text. */
+function BadgeText({ badge }: { badge: DiffBadge }): ReactNode {
+  if (badge.kind === 'delete') {
+    return (
+      <>
+        {'\u5220\u9664'} <span className={styles['badgePath']}>{badge.path}</span>
+      </>
+    )
+  }
+  if (badge.del === 0) return <span className={styles['badgeAdd']}>+{badge.add}</span>
+  if (badge.add === 0) return <span className={styles['badgeMinus']}>\u2212{badge.del}</span>
+  return (
+    <>
+      <span className={styles['badgeAdd']}>+{badge.add}</span>{' '}
+      <span className={styles['badgeMinus']}>\u2212{badge.del}</span>
+    </>
+  )
 }
 
 /* ---- per-tool icons (16x16, currentColor → inherits the tool colour) ---- */
@@ -158,6 +169,7 @@ function ToolRow({ root, depth }: { root: ToolCallBlock; depth: number }): React
   const badge = diffBadge(name, args)
   const path = pathOf(name, args)
   const resultText = isResult(root) ? textOf(root.content) : ''
+  const subs = Array.isArray(root.subCalls) ? root.subCalls : []
 
   return (
     <div className={styles['row']} data-depth={depth} data-color={color} data-mm-tool={name} data-error={isError || undefined}>
@@ -171,7 +183,7 @@ function ToolRow({ root, depth }: { root: ToolCallBlock; depth: number }): React
         <span className={`${styles['statusDot']} ${running ? styles['dotRunning'] : ''}`} aria-hidden />
         <span className={styles['name']}>{name}</span>
         {path ? <span className={styles['path']} title={path}>{shortPath(path)}</span> : null}
-        {badge ? <span className={styles['badge']}>{badgeLabel(badge, '删除')}</span> : null}
+        {badge ? <span className={styles['badge']}><BadgeText badge={badge} /></span> : null}
         <span className={styles['chevron']} aria-hidden>{expanded ? '\u25BE' : '\u25B8'}</span>
       </button>
       {expanded ? (
@@ -188,9 +200,9 @@ function ToolRow({ root, depth }: { root: ToolCallBlock; depth: number }): React
           ) : null}
         </div>
       ) : null}
-      {root.subCalls.length > 0 ? (
+      {subs.length > 0 ? (
         <div className={styles['children']}>
-          {root.subCalls.map((sub) => <ToolRow key={sub.callId} root={sub} depth={depth + 1} />)}
+          {subs.map((sub) => <ToolRow key={sub.callId} root={sub} depth={depth + 1} />)}
         </div>
       ) : null}
     </div>
@@ -205,9 +217,37 @@ function pretty(raw: string): string {
   }
 }
 
+/** React error boundary: a malformed tool node must never take the whole chat
+ *  view down. Any render exception inside the card falls back to a plain,
+ *  still-clickable row instead of crashing the slot (which would freeze the
+ *  conversation right at the bash card — the "stops at bash" symptom). */
+class CardBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false }
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true }
+  }
+
+  override render(): ReactNode {
+    if (this.state.failed) {
+      return (
+        <div className={styles['row']} data-color="red" data-error>
+          <span className={styles['name']}>tool-call</span>
+          <span className={styles['badge']}>render error</span>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 /** R8 decorator component bound to the 'tool-call' chat node. */
 export function ToolCardDecorator(props: ToolCardRenderProps): ReactNode {
-  const root = props.node.data.root
+  const root = props.node?.data?.root
   if (!root) return null
-  return <ToolRow root={root} depth={0} />
+  return (
+    <CardBoundary>
+      <ToolRow root={root} depth={0} />
+    </CardBoundary>
+  )
 }
