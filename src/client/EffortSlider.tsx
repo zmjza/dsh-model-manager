@@ -296,23 +296,23 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
   }, [open])
 
   const { current, groups } = state
-  if (current === null) return null
-  const group = groups.find(candidate => candidate.id === current.provider)
-  const model = group?.models.find(candidate => candidate.id === current.model)
-  const reasoning = model?.reasoning
-  if (reasoning === undefined || reasoning.efforts.length === 0) return null
+  // All hooks must run on every render — compute defensively so the early
+  // returns below (no current / no reasoning levels) cannot change the hook
+  // order between renders (React #310 had the slider entry crash and vanish).
+  const reasoning = current === null
+    ? undefined
+    : groups.find(candidate => candidate.id === current.provider)?.models
+        .find(candidate => candidate.id === current.model)?.reasoning
+  const efforts = reasoning?.efforts ?? []
+  const index = effortIndex(efforts, current?.reasoningEffort)
+  const committedPos = levelPosition(index, efforts.length)
 
-  const efforts = reasoning.efforts
-  const count = efforts.length
-  const index = effortIndex(efforts, current.reasoningEffort)
-  const committedPos = levelPosition(index, count)
-  const strength = levelStrength(index >= 0 ? index : 0, count)
-  const disabled = locked === true || state.status === 'selecting'
-  const selectedEffortId = index >= 0 ? efforts[index]?.id : undefined
-  const interest = tierInterest(selectedEffortId, index, count)
-  // What the header shows: live preview during a drag, else the committed level.
-  const displayIndex = dragging && previewIndex >= 0 ? previewIndex : index
-  const atMax = displayIndex === count - 1
+  // Anchor the spring to the committed level whenever it changes (external
+  // switches, keyboard, and the release commit).
+  useEffect(() => {
+    if (dragging) return
+    targetRef.current = committedPos
+  }, [committedPos, dragging])
 
   // The spring: a framerate-independent ease that keeps the handle planted when
   // idle (loops only while it is still moving). While dragging it chases the
@@ -350,12 +350,17 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
     return () => cancelAnimationFrame(raf)
   }, [open, dragging])
 
-  // Anchor the spring to the committed level whenever it changes (external
-  // switches, keyboard, and the release commit).
-  useEffect(() => {
-    if (dragging) return
-    targetRef.current = committedPos
-  }, [committedPos, dragging])
+  if (current === null) return null
+  if (efforts.length === 0) return null
+
+  const count = efforts.length
+  const strength = levelStrength(index >= 0 ? index : 0, count)
+  const disabled = locked === true || state.status === 'selecting'
+  const selectedEffortId = index >= 0 ? efforts[index]?.id : undefined
+  const interest = tierInterest(selectedEffortId, index, count)
+  // What the header shows: live preview during a drag, else the committed level.
+  const displayIndex = dragging && previewIndex >= 0 ? previewIndex : index
+  const atMax = displayIndex === count - 1
 
   const selectEffort = (effortId: string): void => {
     if (lastPickedRef.current === effortId || current.reasoningEffort === effortId) return

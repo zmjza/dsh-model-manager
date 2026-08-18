@@ -1,6 +1,6 @@
 {
   "name": "dsh-model-manager",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "DSH web plugin: model settings enhancement — same-family multi-gateway providers, per-model reasoning effort (thinking level) configuration with auto-detection, composer slider, and model visibility control",
   "author": "zmjza",
   "license": "MIT",
