@@ -243,12 +243,14 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
       && stringAt(fallback, 'apiKeyEnv') === undefined && keyValue.length > 0
       ? setPath(draft, ['apiKeyEnv'], keyRef)
       : draft
-    // claude / gpt / gemini / grok families are multimodal — re-stamping them
-    // on every pi-ai save also repairs profiles added before this default
-    // existed, so an image/file session is no longer gated out.
-    const final = layout === 'pi-ai' && Array.isArray(getPath(next, ['models']))
-      ? setPath(next, ['models'], (getPath(next, ['models']) as unknown[]).map(model => ensureMultimodalInput(model as Record<string, unknown>)))
-      : next
+    // Re-stamp multimodal input for claude/gpt/gemini/grok on every pi-ai save
+    // so previous profiles get repaired too. (retryPolicy cannot go through the
+    // schema-driven editor — validateDraft refuses unknown fields — so the host
+    // backfill applies it instead: see retry-policy-backfill.ts.)
+    let final = layout === 'pi-ai' ? next : next
+    if (layout === 'pi-ai' && Array.isArray(getPath(next, ['models']))) {
+      final = setPath(next, ['models'], (getPath(next, ['models']) as unknown[]).map(model => ensureMultimodalInput(model as Record<string, unknown>)))
+    }
     if (props.credentialOnly !== true) {
       // The same checker gates the submit button, so a card cannot reach this
       // with a bad row; it stays because the schema check below would refuse

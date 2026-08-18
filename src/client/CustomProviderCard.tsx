@@ -30,6 +30,7 @@ import { validateDeepSeekModels } from './DeepSeekModelsEditor.tsx'
 import { ModelListEditor } from './ModelListEditor.tsx'
 import type { ModelDraft } from './ModelListEditor.tsx'
 import { ensureMultimodalInput } from './family-modality.ts'
+import { CUSTOM_RETRY_POLICY } from './provider-policy.ts'
 import { deriveKeyRef, messageOf } from './store.ts'
 import type { en } from './locales.ts'
 import styles from './ModelsSection.module.css'
@@ -153,6 +154,10 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         // claude / gpt / gemini / grok families are multimodal — stamp their
         // input modalities so image/file sessions are not gated out (R).
         models: models.map(model => ensureMultimodalInput({ ...model })),
+        // Retry up to 5 attempts and include AUTH in the retryable set, so a
+        // transient gateway 401 (valid key, occasional spurious auth failure)
+        // is absorbed instead of killing the turn (R9#3).
+        retryPolicy: CUSTOM_RETRY_POLICY,
       }
       const response = await api.settings.mutate({
         ns: NS,

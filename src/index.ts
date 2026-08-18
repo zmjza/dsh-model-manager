@@ -13,10 +13,11 @@
  * macOS (LaunchAgent `RunAtLoad`) and Windows (logon scheduled task).
  *
  * R9#2 (delete conversation) adds a second host endpoint that hard-deletes a
- * session's persisted directory (its event log + artifacts) from
- * `~/.dsh/sessions/<project>/<id>`, scoped to the exact session id (never a
- * project root or arbitrary path). Purely host-local, plugin-owned, no
- * harness source changes.
+ * session's persisted directory (its event log + artifacts).
+ *
+ * R9#3 (flaky-auth fix) backfills `retryPolicy` (max 5, AUTH retryable) onto
+ * every llm-pi-ai provider at boot, so transient gateway 401s are retried
+ * instead of killing the turn. Purely host-local, plugin-owned, idempotent.
  */
 
 import type { Context } from '@deepseek-ai/cordis'
@@ -24,9 +25,10 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { handleRestartRequest } from './host/restart.ts'
 import { handleDeleteSessionRequest } from './host/session-delete.ts'
+import { backfillRetryPolicy, handleApplyRetryPolicy } from './host/retry-policy-backfill.ts'
 
-/** Services this plugin needs before `apply` runs (webServer serves the routes). */
-export const inject = ['webServer']
+/** Services this plugin needs before `apply` runs (webServer serves the routes, settings powers the retry backfill). */
+export const inject = ['webServer', 'settings']
 
 /**
  * Register this plugin's endpoints once the web server is up.
@@ -45,4 +47,17 @@ export function apply(ctx: Context): void {
     path: '/api/model-manager/delete-session',
     handler: handleDeleteSessionRequest,
   })
+  ctx.webServer.register({
+    kind: 'exact',
+    path: '/api/model-manager/apply-retry-policy',
+    handler: handleApplyRetryPolicy(ctx),
+  })
+
+  // R9#3 — stamp the retry policy on every existing pi-ai (custom) provider.
+  // Retried at a few boot points in case the settings service mounts late.
+  for (const at of [2000, 8000, 20000]) {
+    setTimeout(() => {
+      void backfillRetryPolicy(ctx).catch(() => 0)
+    }, at)
+  }
 }
