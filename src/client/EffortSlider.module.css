@@ -1,36 +1,66 @@
-/* Composer thinking-level slider — Claude / Codex "Effort" style (v5 R3+R4).
+/* Composer thinking-level slider — prototype "Effort" deck (dark/light).
  *
- * The popup is a theme-adaptive card: ALL surface/border/text colors come from
- * the DSH theme tokens this build actually provides (verified 2026-08-18 on a
- * live render):
- *   surfaces  → --dsw-alias-bg-base / --dsw-alias-bg-layer-*
- *   borders   → --dsw-alias-border-l2 / --dsw-alias-border-l3
- *   labels    → --dsw-alias-label-primary / -secondary / -tertiary
- *   hover     → --dsw-alias-interactive-bg-hover
- * so the card follows the page theme (light/dark) automatically; no hard-coded
- * surface hex. The purple "stardust" is a curated --effort-purple (a theme-
- * neutral violet, brighter when body carries data-ds-dark-theme) because this
- * build exposes no purple accent token.
+ * Ports the user's Effort prototype: a rounded glass card with an
+ * "Effort" header + level word, a 32px gridded rail whose fill follows the
+ * level, a white rounded thumb with a purple bloom, and a FINER canvas
+ * particle field (soft radial glow-dots + star glints near max, drawn in
+ * EffortSlider.tsx). All surfaces/colours come from the two decks below via
+ * `--eff-*` custom properties toggled by `body[data-ds-dark-theme]`, so the
+ * card matches the page theme automatically (light = default).
  *
- * The track carries a particle-glow fill (the "stardust" layer) whose WIDTH
- * follows --effort-fill (the level position) and whose glow scales with
- * --effort-strength (0..1). Each thinking level binds a DIFFERENT animation
- * morphology through the data-tier attribute on the popup — off has no
- * particles at all, minimal is a sparse static sprinkle, low twinkles, medium
- * drifts, high pulses a ring, xhigh grows a halo, max fills the track with a
- * comet streak. Switching levels visibly changes the animation (R4).
- *
- * The card opens ABOVE the trigger button (R5), flipping below automatically in
- * short windows via a safe-area query (accepted: keep the CSS breakpoint).
+ * The card opens ABOVE the trigger (R5), flipping below only in short windows.
+ * The particle canvas bursts a little beyond the rail, like the prototype.
  */
 
+/* ================= colour decks (light default / dark override) ========= */
+.popup {
+  --eff-primary: #8b5cf6;
+  --eff-primary-deep: #6d28d9;
+  --eff-track: rgba(139, 92, 246, 0.05);
+  --eff-grid-line: rgba(139, 92, 246, 0.09);
+  --eff-fill-a: rgba(139, 92, 246, 0.12);
+  --eff-fill-b: rgba(139, 92, 246, 0.34);
+  --eff-card: #ffffff;
+  --eff-card-border: rgba(15, 23, 42, 0.07);
+  --eff-text: #0f172a;
+  --eff-sub: #64748b;
+  --eff-thumb-shadow:
+    0 2px 10px rgba(139, 92, 246, 0.25),
+    0 0 0 1px rgba(15, 23, 42, 0.05);
+  --eff-level-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+  --eff-card-shadow:
+    0 10px 30px rgba(15, 23, 42, 0.08),
+    0 1px 3px rgba(15, 23, 42, 0.06),
+    inset 0 1px 1px rgba(255, 255, 255, 0.8);
+}
+:global(body[data-ds-dark-theme]) .popup {
+  --eff-primary: #d0bcff;
+  --eff-primary-deep: #a678ff;
+  --eff-track: #111520;
+  --eff-grid-line: rgba(255, 255, 255, 0.04);
+  --eff-fill-a: rgba(160, 120, 255, 0.28);
+  --eff-fill-b: rgba(208, 188, 255, 0.55);
+  --eff-card: #0b111e;
+  --eff-card-border: rgba(255, 255, 255, 0.08);
+  --eff-text: #d3e4fe;
+  --eff-sub: #8fa3c8;
+  --eff-thumb-shadow:
+    0 0 10px rgba(160, 120, 255, 0.45),
+    0 0 22px rgba(160, 120, 255, 0.22),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+  --eff-level-shadow: 0 0 12px rgba(208, 188, 255, 0.4);
+  --eff-card-shadow:
+    0 4px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 1px rgba(255, 255, 255, 0.06);
+}
+
+/* ================= root + collapsed trigger ============================ */
 .root {
   position: relative;
   display: inline-flex;
   align-items: center;
 }
 
-/* ---- collapsed trigger: a compact pill ---- */
 .trigger {
   display: inline-flex;
   align-items: center;
@@ -47,7 +77,6 @@
   white-space: nowrap;
   transition: background 150ms ease;
 }
-
 .trigger:hover {
   background: var(--dsw-alias-interactive-bg-hover, rgb(38 49 72 / 6%));
 }
@@ -57,9 +86,11 @@
   height: 8px;
   border-radius: 50%;
   flex: none;
-  background: var(--dsw-alias-label-tertiary, #81858c);
-  box-shadow: 0 0 calc(2px + 6px * var(--effort-strength, 0)) color-mix(in srgb, var(--effort-purple, #8b5cff) calc(var(--effort-strength, 0) * 100%), transparent);
+  background: var(--eff-primary, #8b5cf6);
+  box-shadow: 0 0 calc(2px + 8px * var(--effort-strength, 0))
+    color-mix(in srgb, var(--eff-primary, #8b5cf6) calc(20% + 60% * var(--effort-strength, 0)), transparent);
   transition: box-shadow 200ms ease, background 200ms ease;
+  opacity: 0.85;
 }
 
 .triggerLabel {
@@ -68,37 +99,25 @@
   text-overflow: ellipsis;
 }
 
-/* ---- curated stardust purple: theme-light violet, brighter in dark mode ---- */
-.popup {
-  --effort-purple: #8b5cff;
-}
-:global(body[data-ds-dark-theme]) .popup {
-  --effort-purple: #a678ff;
-}
-
-/* ---- popup: theme-adaptive card ABOVE the trigger ---- */
+/* ================= popup card (opens ABOVE the trigger) ================ */
 .popup {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 8px);
-  z-index: 40;
-  width: 268px;
-  padding: 12px 14px 10px;
-  background:
-    radial-gradient(120% 120% at 100% 0%, color-mix(in srgb, var(--effort-purple, #8b5cff) 18%, transparent), transparent 60%),
-    var(--dsw-alias-bg-base, #1a1a20);
-  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgb(0 0 0 / 45%);
-  color: var(--dsw-alias-label-primary, #0f1115);
+  bottom: calc(100% + 10px);
+  z-index: 60;
+  width: 300px;
+  padding: 16px 16px 12px;
+  background: var(--eff-card, #fff);
+  border: 1px solid var(--eff-card-border, rgb(0 0 0 / 7%));
+  border-radius: 18px;
+  box-shadow: var(--eff-card-shadow, 0 10px 30px rgb(0 0 0 / 20%));
+  color: var(--eff-text, #0f172a);
 }
 
-/* Flip to below when the trigger has room above (the composer sits at the
-   bottom of tall windows, so above is almost always safe; this is the safety
-   net for short windows / tall panels). */
+/* Flip to below when there is not enough room above. */
 @media (max-height: 700px) {
   .popup {
-    top: calc(100% + 8px) !important;
+    top: calc(100% + 10px) !important;
     bottom: auto !important;
   }
 }
@@ -112,297 +131,131 @@
 }
 
 .popupTitle {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-  color: var(--dsw-alias-label-primary, #0f1115);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--eff-text, #0f172a);
 }
 
 .popupLevel {
-  font-size: 12px;
-  color: var(--effort-purple, #8b5cff);
-  font-weight: 500;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--eff-primary, #8b5cf6);
+  text-shadow: var(--eff-level-shadow, none);
 }
 
-/* ---- the track + stardust fill ---- */
-.track {
+/* ================= track: gridded container + fill + canvas + thumb ===== */
+.trackWrap {
   position: relative;
-  height: 26px;
-  cursor: pointer;
+  height: 42px;
+  margin: 2px 0 2px;
   touch-action: none;
-  margin: 4px 4px 6px;
 }
 
-.rail {
+.trackContainer {
   position: absolute;
-  left: 6px;
-  right: 6px;
-  top: 50%;
-  height: 6px;
-  border-radius: 3px;
-  transform: translateY(-50%);
-  background: var(--dsw-alias-border-l3, rgb(0 0 0 / 12%));
-}
-
-/* The particle-glow fill: width follows the level; the purple beam gets a soft
-   glow whose spread/brightness follow --effort-strength. */
-.particleFill {
-  position: absolute;
-  left: 6px;
-  top: 50%;
-  width: var(--effort-fill, 0%);
-  max-width: calc(100% - 18px);
-  height: 6px;
-  border-radius: 3px;
-  transform: translateY(-50%);
-  background: linear-gradient(90deg,
-    color-mix(in srgb, var(--effort-purple, #8b5cff) 55%, transparent),
-    var(--effort-purple, #8b5cff));
-  box-shadow:
-    0 0 calc(4px + 10px * var(--effort-strength, 0))
-    color-mix(in srgb, var(--effort-purple, #8b5cff) calc(30% + 50% * var(--effort-strength, 0)), transparent);
-  overflow: visible;
-}
-
-/* Sparkles: tiny purple pixel-dots layered on the fill (the "stardust" sheets).
-   Hidden by default; each data-tier below turns them on with its own density,
-   motion and keyframes. */
-.particleFill::before,
-.particleFill::after {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  pointer-events: none;
-  opacity: 0;
-  background-image:
-    radial-gradient(circle at 12% 40%, color-mix(in srgb, var(--effort-purple, #8b5cff) 90%, transparent) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 30% 70%, color-mix(in srgb, var(--effort-purple, #8b5cff) 70%, transparent) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 48% 30%, color-mix(in srgb, var(--effort-purple, #8b5cff) 85%, transparent) 0 1px, transparent 1.5px),
-    radial-gradient(circle at 64% 62%, color-mix(in srgb, var(--effort-purple, #8b5cff) 75%, transparent) 0 2px, transparent 2.5px),
-    radial-gradient(circle at 80% 35%, color-mix(in srgb, var(--effort-purple, #8b5cff) 95%, transparent) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 92% 58%, color-mix(in srgb, var(--effort-purple, #8b5cff) 70%, transparent) 0 2px, transparent 2.6px);
-  background-size: 34px 34px;
-  background-repeat: repeat;
-}
-
-/* Second sheet offsets and counter-phases so motion feels richer. */
-.particleFill::after {
-  background-position: 8px 4px;
-  animation-delay: -1s;
-}
-
-/* ---- ancillary fx layers (hidden unless a tier enables them) ---- */
-.ring,
-.comet {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  pointer-events: none;
-  opacity: 0;
-}
-
-/* A breathing purple halo ring around the beam (high/xhigh/max). */
-.ring {
-  width: 34px;
-  height: 34px;
-  margin: -17px 0 0 -17px;
-  border: 1px solid color-mix(in srgb, var(--effort-purple, #8b5cff) 55%, transparent);
-  border-radius: 50%;
-  box-shadow: 0 0 12px color-mix(in srgb, var(--effort-purple, #8b5cff) 45%, transparent);
-}
-
-/* A short comet streak that runs along the filled rail (max only). */
-.comet {
   left: 0;
-  width: 60px;
-  height: 3px;
-  margin-top: -1.5px;
-  border-radius: 2px;
-  background: linear-gradient(90deg, transparent,
-    color-mix(in srgb, var(--effort-purple, #8b5cff) 85%, #fff));
-  box-shadow: 0 0 10px var(--effort-purple, #8b5cff);
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 30px;
+  border-radius: 8px;
+  background-color: var(--eff-track, rgba(139, 92, 246, 0.05));
+  border: 1px solid var(--eff-grid-line, rgba(139, 92, 246, 0.12));
+  overflow: hidden;
+  pointer-events: none;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.06);
+  background-image:
+    linear-gradient(var(--eff-grid-line, rgba(139, 92, 246, 0.09)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--eff-grid-line, rgba(139, 92, 246, 0.09)) 1px, transparent 1px);
+  background-size: 4px 4px;
 }
 
-/* ================= per-tier animation morphologies (R4) =================
-   data-tier lives on .popup; each block overrides the shared sheets above. */
-
-/* off — no particles, no glow, no rings. */
-[data-tier='off'] .particleFill::before,
-[data-tier='off'] .particleFill::after {
-  opacity: 0;
-  animation: none;
-}
-[data-tier='off'] .ring,
-[data-tier='off'] .comet {
-  animation: none;
+.trackFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: var(--effort-fill, 0%);
+  background: linear-gradient(90deg, var(--eff-fill-a, rgba(139, 92, 246, 0.12)) 0%, var(--eff-fill-b, rgba(139, 92, 246, 0.34)) 100%);
+  pointer-events: none;
+  transition: width 0.1s linear;
 }
 
-/* minimal — sparse static sprinkle (larger cells = fewer dots, no motion). */
-[data-tier='minimal'] .particleFill::before,
-[data-tier='minimal'] .particleFill::after {
-  opacity: 0.55;
-  animation: none;
-  background-size: 52px 52px;
-}
-
-/* low — sparse twinkle: a slow step fade. */
-[data-tier='low'] .particleFill::before,
-[data-tier='low'] .particleFill::after {
-  opacity: 0.6;
-  background-size: 44px 44px;
-  animation: twinkle 2.8s ease-in-out infinite;
-}
-[data-tier='low'] .particleFill::after {
-  animation-delay: -1.4s;
-}
-
-/* medium — medium density plus a gentle float. */
-[data-tier='medium'] .particleFill::before,
-[data-tier='medium'] .particleFill::after {
-  opacity: 0.72;
-  background-size: 36px 36px;
-  animation: drift 3s ease-in-out infinite alternate;
-}
-[data-tier='medium'] .particleFill::after {
-  animation-delay: -1.5s;
-}
-
-/* high — dense with a breathing ring orbit. */
-[data-tier='high'] .particleFill::before,
-[data-tier='high'] .particleFill::after {
-  opacity: 0.82;
-  background-size: 28px 28px;
-  animation: ringPulse 2.2s ease-in-out infinite alternate;
-}
-[data-tier='high'] .particleFill::after {
-  animation-delay: -1.1s;
-}
-[data-tier='high'] .ring {
-  opacity: 0.9;
-  animation: ringBreathe 2s ease-in-out infinite;
-}
-
-/* xhigh — brighter with a growing halo. */
-[data-tier='xhigh'] .particleFill::before,
-[data-tier='xhigh'] .particleFill::after {
-  opacity: 0.92;
-  background-size: 24px 24px;
-  animation: haloGrow 1.8s ease-in-out infinite alternate;
-}
-[data-tier='xhigh'] .particleFill::after {
-  animation-delay: -0.9s;
-}
-[data-tier='xhigh'] .ring {
-  opacity: 0.85;
-  animation: ringBreathe 1.6s ease-in-out infinite;
-}
-
-/* max — full-track shine plus a comet streak racing along the rail. */
-[data-tier='max'] .particleFill::before,
-[data-tier='max'] .particleFill::after {
-  opacity: 1;
-  background-size: 20px 20px;
-  animation: drift 1.4s ease-in-out infinite alternate-reverse;
-}
-[data-tier='max'] .ring {
-  opacity: 0.95;
-  animation: ringBreathe 1.2s ease-in-out infinite;
-}
-[data-tier='max'] .comet {
-  opacity: 1;
-  animation: cometRun 1.1s linear infinite;
-}
-
-/* ---- keyframes ---- */
-@keyframes twinkle {
-  0%, 100% { opacity: 0.28; }
-  50% { opacity: 0.75; }
-}
-
-@keyframes drift {
-  0% { transform: translateX(0) scale(1); }
-  100% { transform: translateX(8px) scale(1.08); }
-}
-
-@keyframes ringPulse {
-  0% { transform: translateX(0) scale(1); filter: brightness(1); }
-  100% { transform: translateX(10px) scale(1.18); filter: brightness(1.3); }
-}
-
-@keyframes haloGrow {
-  0% { transform: scale(1); filter: brightness(1); }
-  100% { transform: scale(1.3); filter: brightness(1.6); }
-}
-
-@keyframes ringBreathe {
-  0%, 100% { transform: scale(0.55); opacity: 0.2; }
-  50% { transform: scale(1); opacity: 0.9; }
-}
-
-@keyframes cometRun {
-  0% { transform: translateX(-30%); opacity: 0; }
-  15% { opacity: 1; }
-  85% { opacity: 1; }
-  100% { transform: translateX(140%); opacity: 0; }
-}
-
-/* ---- ticks (clickable level stops) ---- */
-.tick {
+/* Particle field: bursts a bit beyond the rail for the bloom. */
+.canvas {
   position: absolute;
   top: 50%;
-  left: var(--tick-pos, 0%);
-  width: 10px;
-  height: 10px;
-  padding: 0;
-  border: 1px solid var(--dsw-alias-border-l2, rgb(0 0 0 / 10%));
-  border-radius: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--dsw-alias-bg-layer-3, var(--dsw-alias-bg-base, #fff));
+  left: 0;
+  width: 100%;
+  height: 78px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  z-index: 5;
+  mix-blend-mode: multiply; /* light deck */
+}
+:global(body[data-ds-dark-theme]) .canvas {
+  mix-blend-mode: screen; /* dark deck */
+}
+
+/* Invisible draggable rail on top (receives pointer/keyboard). */
+.track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 30px;
   cursor: pointer;
-  transition: transform 120ms ease, background 150ms ease, box-shadow 150ms ease;
+  z-index: 12;
+  outline: none;
+}
+.track:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--eff-primary, #8b5cf6) 45%, transparent);
+  border-radius: 8px;
 }
 
-.tick:hover {
-  transform: translate(-50%, -50%) scale(1.25);
-}
-
-.tickActive {
-  border-color: var(--effort-purple, #8b5cff);
-  background: var(--effort-purple, #8b5cff);
-  box-shadow: 0 0 calc(4px + 8px * var(--effort-strength, 0))
-    color-mix(in srgb, var(--effort-purple, #8b5cff) 75%, transparent);
-}
-
-/* ---- thumb: white rounded handle at the current level (white in both themes) ---- */
+/* White rounded thumb with the purple bloom (white in both decks). */
 .thumb {
   position: absolute;
   top: 50%;
   left: var(--thumb-pos, 0%);
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  border-radius: 12px;
   transform: translate(-50%, -50%);
   background: #fff;
-  border: 2px solid color-mix(in srgb, var(--effort-purple, #8b5cff) 70%, #fff);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--effort-purple, #8b5cff) 25%, transparent),
-    0 0 calc(4px + 10px * var(--effort-strength, 0))
-    color-mix(in srgb, var(--effort-purple, #8b5cff) calc(40% + 55% * var(--effort-strength, 0)), transparent);
+  box-shadow: var(--eff-thumb-shadow, 0 2px 10px rgba(139, 92, 246, 0.25));
+  z-index: 11;
   pointer-events: none;
-  transition: left 180ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 200ms ease;
+  transition:
+    left 180ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 200ms ease,
+    transform 100ms ease;
 }
 
-/* ---- endpoint labels: 思考程度 低 ── 高 (decision A) ---- */
+/* ================= endpoint labels + MAXIMUM YIELD ====================== */
 .labels {
   display: flex;
   justify-content: space-between;
-  margin-top: 6px;
+  align-items: baseline;
+  margin-top: 8px;
+  padding: 0 2px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsw-alias-label-tertiary, #81858c);
+  color: var(--eff-sub, #64748b);
 }
 
-.labels > span:nth-child(2) {
-  color: var(--effort-purple, #8b5cff);
-  font-weight: 500;
+.labelMax {
+  color: var(--eff-primary, #8b5cf6);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.labelMaxOn {
+  opacity: 1;
+  text-shadow: var(--eff-level-shadow, none);
 }
