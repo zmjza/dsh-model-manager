@@ -21,7 +21,7 @@ export interface ModelVisibilityToggleProps {
   /** The model id whose visibility this switch edits. */
   modelId: string
   /** The provider route owning the model, when known. */
-  provider?: string
+  provider?: string | undefined
   /** Section copy. */
   t: (key: keyof typeof en) => string
   /** Disable every control. */

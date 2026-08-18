@@ -12,6 +12,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { en } from './locales.ts'
 import { ReasoningEffortEditor } from './ReasoningEffortEditor.tsx'
+import { ModelVisibilityToggle } from './ModelVisibilityToggle.tsx'
 import styles from './ModelsSection.module.css'
 
 /** One catalog entry kept structurally open so hidden or future fields survive an edit. */
@@ -173,6 +174,8 @@ export interface DeepSeekModelsEditorProps {
   defaultContextWindow: number | undefined
   /** Fallback output cap used when a row omits its exact value. */
   defaultMaxTokens: number | undefined
+  /** Provider route owning these models (visibility toggle key), when known. */
+  provider?: string
   /** Section copy. */
   t: (key: keyof typeof en) => string
   /** Disable every mutation. */
@@ -397,6 +400,12 @@ export function DeepSeekModelsEditor(props: DeepSeekModelsEditorProps): ReactNod
                       {capacityField(model, index, 'contextWindow', props.defaultContextWindow)}
                       {capacityField(model, index, 'maxTokens', props.defaultMaxTokens)}
                       {effortField(model, index)}
+                      <ModelVisibilityToggle
+                        modelId={typeof model['id'] === 'string' ? model['id'] : ''}
+                        provider={props.provider}
+                        t={props.t}
+                        disabled={props.disabled}
+                      />
                     </div>
                   )
                   : null}

@@ -4,21 +4,23 @@
  * Ports the user's Effort slider prototype (dark/light decks) into the
  * composer control: a glass card with an "Effort" header + level word, a
  * 32px gridded rail whose fill follows the level, a white rounded thumb with
- * a purple bloom, and a FINER canvas particle field (soft radial glow dots +
- * the occasional star glint at high effort). Theme comes from the two decks
- * through CSS custom properties keyed on `body[data-ds-dark-theme]`, so the
- * card matches the page automatically.
+ * a purple bloom, and a dense, FINER canvas particle field (soft radial
+ * glow-dots, per-particle twinkle, star glints near maximum).
+ *
+ * SILKY interaction: the thumb/fill is driven by a framerate-independent
+ * spring. While dragging the handle follows the pointer ~tight (fast time
+ * constant) but with no 1:1 CSS transition jitter; on release it glides to
+ * the nearest level and settles softly. Selection is committed ONCE on
+ * release (not per pointer-move), so the remote effort panel only updates at
+ * the final value and the audio blips once — the drag itself stays pure
+ * rendering. Arrow keys bump levels directly with the same spring settle.
  *
  * Behaviour:
- *   • the slider is the discrete set of levels the model advertises — dragging
- *     snaps to the nearest one and commits through the shared per-session
- *     ModelDirectory (official effort panel stays in lockstep); arrow keys
- *     bump it too; each pick plays the ascending blip.
+ *   • discrete levels from the model; drag snaps + commits on release through
+ *     the shared per-session ModelDirectory.
  *   • opened ABOVE the trigger (R5), flipping below only in short windows.
- *   • AUTO-HIDE: while open, a click/tap anywhere outside this control
- *     (trigger + card) closes it — no extra click on a close affordance, and
- *     Escape closes too.
- *   • the particle field only animates while the card is open.
+ *   • AUTO-HIDE: a press anywhere outside (trigger + card) closes it; Esc too.
+ *   • the particle field animates only while the card is open.
  */
 
 import { useEffect, useRef, useState } from 'react'
@@ -58,10 +60,10 @@ function levelStrength(index: number, count: number): number {
   return index / (count - 1)
 }
 
-/** Left→right fill percentage for the rail at a level. */
-function fillPercent(index: number, count: number): number {
+/** The 0..1 thumb position of a level stop. */
+function levelPosition(index: number, count: number): number {
   if (index < 0 || count <= 1) return 0
-  return (index / (count - 1)) * 100
+  return index / (count - 1)
 }
 
 /** Pretty header word for a level id (the prototype deck's Low/Medium/High/Max). */
@@ -78,7 +80,7 @@ function levelWord(id: string | undefined): string {
 
 /** Particle-interest multiplier per tier; escalating density + sparkle. */
 const TIER_INTEREST: Record<string, number> = {
-  off: 0, minimal: 0.45, low: 0.75, medium: 1, high: 1.35, xhigh: 1.7, max: 2.1,
+  off: 0, minimal: 0.5, low: 0.8, medium: 1.1, high: 1.5, xhigh: 1.85, max: 2.3,
 }
 const TIER_ORDER = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
@@ -94,8 +96,8 @@ function tierInterest(effortId: string | undefined, index: number, count: number
 }
 
 /* ------------------------------------------------------------------ *
- * Refined particle field (canvas). Soft radial glow-dots, gentle Brownian
- * drift, a twinkle on each particle, and star glints near maximum.
+ * Dense refined particle field. Soft radial glow-dots + occasional star
+ * glints; spawn volume scales with effort so higher levels visibly bloom.
  * ------------------------------------------------------------------ */
 interface Particle {
   x: number; y: number
@@ -109,7 +111,7 @@ interface Particle {
 
 function Particles({ strength, interest, dark }: { strength: number; interest: number; dark: boolean }): ReactNode {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const stateRef = useRef<{ raf: number; particles: Particle[]; last: number }>({ raf: 0, particles: [], last: 0 })
+  const stateRef = useRef<{ raf: number; particles: Particle[] }>({ raf: 0, particles: [] })
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -117,7 +119,7 @@ function Particles({ strength, interest, dark }: { strength: number; interest: n
     const ctx = canvas.getContext('2d')
     if (ctx === null) return
 
-    const core = dark ? [206, 170, 255] : [139, 92, 246]
+    const core = dark ? [212, 178, 255] : [139, 92, 246]
     const glintRgb = dark ? '255,255,255' : '109,40,217'
 
     // Crisp backing store on hi-dpi.
@@ -126,27 +128,27 @@ function Particles({ strength, interest, dark }: { strength: number; interest: n
       const rect = canvas.parentElement?.getBoundingClientRect()
       if (!rect) return
       canvas.width = Math.round(rect.width * dpr)
-      canvas.height = Math.round(78 * dpr)
+      canvas.height = Math.round(82 * dpr)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
     resize()
     window.addEventListener('resize', resize)
 
     const spawn = (spawnX: number): void => {
-      const st2 = stateRef.current
-      if (st2.particles.length > 200) return
-      const spark = strength > 0.82 && Math.random() < 0.16
+      const store = stateRef.current
+      if (store.particles.length > 420) return
+      const spark = strength > 0.75 && Math.random() < 0.22
       const size = spark
-        ? Math.random() * 0.7 + 0.5
-        : Math.random() * 1.05 + 0.35
-      st2.particles.push({
+        ? Math.random() * 1.2 + 1.0
+        : Math.random() * 1.5 + 0.8
+      store.particles.push({
         x: spawnX,
-        y: 39 + (Math.random() - 0.5) * 14,
-        vx: Math.random() * 0.55 + 0.12 + strength * 0.5,
-        vy: (Math.random() - 0.42) * 0.5,                // slight upward bias
+        y: 41 + (Math.random() - 0.5) * 22,
+        vx: Math.random() * 0.75 + 0.18 + strength * 0.65,
+        vy: (Math.random() - 0.42) * 0.6,               // slight upward bias
         size,
         life: 1,
-        decay: Math.random() * 0.018 + 0.009 + strength * 0.014,
+        decay: Math.random() * 0.014 + 0.006 + strength * 0.01,
         phase: Math.random() * Math.PI * 2,
         phaseSpeed: Math.random() * 0.09 + 0.04,
         twinkle: Math.random() * Math.PI * 2,
@@ -157,11 +159,12 @@ function Particles({ strength, interest, dark }: { strength: number; interest: n
 
     const frame = (timeMs: number): void => {
       const t = timeMs / 1000
-      // gentle ease toward the target strength so sparkle ramps softly
-      const density = Math.pow(strength, 1.4) * 9 * interest
+      // DENSE, soft spawn cloud; volume grows steeply with strength so higher
+      // levels visibly bloom with sparkling light.
+      const density = Math.pow(strength, 1.25) * 28 * interest
       if (strength > 0.005 && density > 0) {
         for (let i = 0; i < density; i++) {
-          if (Math.random() < 0.55) continue
+          if (Math.random() < 0.12) continue   // keep ~9/10 of the budget
           const fillEdge = strength * canvas.width / dpr
           const x = Math.random() < 0.3 ? fillEdge : Math.random() * fillEdge
           spawn(x)
@@ -181,8 +184,8 @@ function Particles({ strength, interest, dark }: { strength: number; interest: n
         p.life -= p.decay
         if (p.life <= 0) { px.splice(i, 1); continue }
 
-        const twinkle = 0.62 + 0.38 * Math.sin(p.twinkle + t * p.twinkleSpeed)
-        const alpha = Math.max(0, Math.min(1, p.life * twinkle)) * (e > 0.7 ? 1.05 : 0.8)
+        const twinkle = 0.66 + 0.34 * Math.sin(p.twinkle + t * p.twinkleSpeed)
+        const alpha = Math.max(0, Math.min(1, p.life * twinkle)) * (e > 0.7 ? 1.15 : 0.9)
         ctx.globalAlpha = alpha
         const r = p.size
         if (p.glint) {
@@ -225,7 +228,7 @@ function Particles({ strength, interest, dark }: { strength: number; interest: n
     <canvas
       ref={canvasRef}
       className={styles['canvas']}
-      style={{ width: '100%', height: 78 }}
+      style={{ width: '100%', height: 82 }}
       aria-hidden
     />
   )
@@ -250,9 +253,18 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
   const [dark, setDark] = useState(
     () => typeof document !== 'undefined' && document.body.getAttribute('data-ds-dark-theme') !== null,
   )
+  // Live nearest-level word while dragging (final comes from the committed index).
+  const [previewIndex, setPreviewIndex] = useState(-1)
+
   const wrapperRef = useRef<HTMLDivElement | null>(null)
+  const popupRef = useRef<HTMLDivElement | null>(null)
   const trackRef = useRef<HTMLDivElement | null>(null)
   const lastPickedRef = useRef<string | undefined>(undefined)
+  // Silk manipulation state (never flows through React re-renders):
+  const visualRef = useRef(0)          // current smoothed 0..1 position of the thumb/fill
+  const targetRef = useRef(0)          // where the spring is easing toward
+  const ratioRef = useRef(0)           // raw pointer ratio while dragging
+  const draggingRef = useRef(false)
 
   // Keep the deck in sync when the page theme toggles live.
   useEffect(() => {
@@ -291,18 +303,65 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
   if (reasoning === undefined || reasoning.efforts.length === 0) return null
 
   const efforts = reasoning.efforts
+  const count = efforts.length
   const index = effortIndex(efforts, current.reasoningEffort)
-  const strength = index >= 0 ? levelStrength(index, efforts.length) : 0
+  const committedPos = levelPosition(index, count)
+  const strength = levelStrength(index >= 0 ? index : 0, count)
   const disabled = locked === true || state.status === 'selecting'
   const selectedEffortId = index >= 0 ? efforts[index]?.id : undefined
-  const interest = tierInterest(selectedEffortId, index, efforts.length)
-  const atMax = index === efforts.length - 1
+  const interest = tierInterest(selectedEffortId, index, count)
+  // What the header shows: live preview during a drag, else the committed level.
+  const displayIndex = dragging && previewIndex >= 0 ? previewIndex : index
+  const atMax = displayIndex === count - 1
+
+  // The spring: a framerate-independent ease that keeps the handle planted when
+  // idle (loops only while it is still moving). While dragging it chases the
+  // pointer tightly; on release it glides to the nearest stop and settles.
+  useEffect(() => {
+    if (!open) return
+    let raf = 0
+    let last = performance.now()
+    const tick = (now: number): void => {
+      const dt = Math.min(50, now - last)
+      last = now
+      // ms time constant: tight follow while dragging (~24ms), silky settle
+      // after (~85ms) so the release whole-motion reads as one smooth glide.
+      const tau = dragging ? 24 : 85
+      const k = 1 - Math.exp(-dt / tau)
+      const cur = visualRef.current
+      const next = cur + (targetRef.current - cur) * k
+      visualRef.current = next
+      const popup = popupRef.current
+      if (popup !== null) {
+        popup.style.setProperty('--thumb-pos', `${String(next * 100)}%`)
+        popup.style.setProperty('--effort-fill', `${String(next * 100)}%`)
+      }
+      if (Math.abs(targetRef.current - next) > 1e-4) {
+        raf = requestAnimationFrame(tick)
+      } else {
+        visualRef.current = targetRef.current
+        if (popup !== null) {
+          popup.style.setProperty('--thumb-pos', `${String(targetRef.current * 100)}%`)
+          popup.style.setProperty('--effort-fill', `${String(targetRef.current * 100)}%`)
+        }
+      }
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [open, dragging])
+
+  // Anchor the spring to the committed level whenever it changes (external
+  // switches, keyboard, and the release commit).
+  useEffect(() => {
+    if (dragging) return
+    targetRef.current = committedPos
+  }, [committedPos, dragging])
 
   const selectEffort = (effortId: string): void => {
     if (lastPickedRef.current === effortId || current.reasoningEffort === effortId) return
     lastPickedRef.current = effortId
     const pickedIndex = efforts.findIndex(effort => effort.id === effortId)
-    playEffortPick(pickedIndex, efforts.length)
+    playEffortPick(pickedIndex, count)
     void directory.select({
       provider: current.provider,
       model: current.model,
@@ -310,27 +369,39 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
     })
   }
 
-  const pickAt = (clientX: number): void => {
+  const ratioAt = (clientX: number): number => {
     const track = trackRef.current
-    if (track === null || efforts.length === 0) return
+    if (track === null) return 0
     const rect = track.getBoundingClientRect()
-    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    const picked = Math.round(ratio * (efforts.length - 1))
-    const effort = efforts[picked]
-    if (effort !== undefined) selectEffort(effort.id)
+    return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
   }
+  const nearestIndex = (ratio: number): number => Math.round(ratio * (count - 1))
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
     if (disabled) return
     event.preventDefault()
+    draggingRef.current = true
     setDragging(true)
-    pickAt(event.clientX)
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* ignore */ }
+    ratioRef.current = ratioAt(event.clientX)
+    targetRef.current = ratioRef.current
+    setPreviewIndex(nearestIndex(ratioRef.current))
   }
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
-    if (!dragging || disabled) return
-    pickAt(event.clientX)
+    if (!draggingRef.current || disabled) return
+    ratioRef.current = ratioAt(event.clientX)
+    targetRef.current = ratioRef.current
+    const preview = nearestIndex(ratioRef.current)
+    setPreviewIndex(current => current === preview ? current : preview)
   }
-  const stopDrag = (): void => {
+  const commitDrag = (): void => {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    const picked = nearestIndex(ratioRef.current)
+    const effort = efforts[picked]
+    if (effort !== undefined) selectEffort(effort.id)
+    targetRef.current = levelPosition(picked, count)
+    setPreviewIndex(-1)
     setDragging(false)
     lastPickedRef.current = undefined
   }
@@ -338,10 +409,16 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
     if (disabled) return
     if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
       event.preventDefault()
-      if (index >= 0 && index < efforts.length - 1) selectEffort(efforts[index + 1]?.id ?? current.reasoningEffort ?? '')
+      if (index >= 0 && index < count - 1) {
+        const target = efforts[index + 1]
+        if (target !== undefined) selectEffort(target.id)
+      }
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
       event.preventDefault()
-      if (index > 0) selectEffort(efforts[index - 1]?.id ?? '')
+      if (index > 0) {
+        const target = efforts[index - 1]
+        if (target !== undefined) selectEffort(target.id)
+      }
     }
   }
 
@@ -350,8 +427,8 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
 
   const trackStyle = {
     '--effort-strength': String(strength),
-    '--effort-fill': `${String(fillPercent(index, efforts.length))}%`,
-    '--thumb-pos': `${String(index >= 0 ? (index / Math.max(1, efforts.length - 1)) * 100 : 0)}%`,
+    '--effort-fill': `${String(committedPos * 100)}%`,
+    '--thumb-pos': `${String(committedPos * 100)}%`,
   } as CSSProperties
 
   return (
@@ -371,10 +448,17 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
         <span className={styles['triggerLabel']}>{selectedEffortId ?? t('effortSliderProviderDefault')}</span>
       </button>
       {open ? (
-        <div className={styles['popup']} role="dialog" aria-modal="false" aria-label={t('effortSliderNav')} style={trackStyle}>
+        <div
+          ref={popupRef}
+          className={styles['popup']}
+          role="dialog"
+          aria-modal="false"
+          aria-label={t('effortSliderNav')}
+          style={trackStyle}
+        >
           <header className={styles['popupHeader']}>
             <span className={styles['popupTitle']}>{t('effortSliderNav')}</span>
-            <span className={styles['popupLevel']}>{levelWord(selectedEffortId)}</span>
+            <span className={styles['popupLevel']}>{levelWord(displayIndex >= 0 ? efforts[displayIndex]?.id : undefined)}</span>
           </header>
           <div className={styles['trackWrap']}>
             <div className={styles['trackContainer']}>
@@ -386,14 +470,15 @@ export function EffortSlider(props: EffortSliderProps): ReactNode | null {
               className={styles['track']}
               role="slider"
               aria-valuemin={0}
-              aria-valuemax={Math.max(0, efforts.length - 1)}
+              aria-valuemax={Math.max(0, count - 1)}
               aria-valuenow={index < 0 ? 0 : index}
               aria-label={t('effortSliderAria')}
               tabIndex={disabled ? -1 : 0}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
-              onPointerUp={stopDrag}
-              onPointerLeave={stopDrag}
+              onPointerUp={commitDrag}
+              onPointerCancel={commitDrag}
+              onPointerLeave={commitDrag}
               onKeyDown={onKey}
             />
             <span className={styles['thumb']} aria-hidden />

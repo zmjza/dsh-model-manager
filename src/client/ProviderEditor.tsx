@@ -486,6 +486,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
               ? (
                 <DeepSeekModelsEditor
                   {...catalogProps}
+                  provider={props.provider}
                   defaultContextWindow={typeof defaultContextWindow === 'number'
                     ? defaultContextWindow
                     : undefined}
